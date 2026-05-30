@@ -30,5 +30,11 @@ jobs:
       - name: Lint con ruff
         run: ruff check src/ tests/ && ruff format --check src/ tests/
 
+      - name: Análisis estático de seguridad (bandit)
+        run: bandit -r src/ --severity-level medium
+
+      - name: Auditoría de dependencias (pip-audit)
+        run: pip-audit || true
+
       - name: Ejecutar tests unitarios
         run: pytest tests/unit/ -v --cov=src --cov-report=term-missing

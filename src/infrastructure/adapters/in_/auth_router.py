@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from src.application.use_cases.autenticar_usuario import (
     AutenticacionError,
@@ -26,14 +26,18 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     correo: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     correo: EmailStr
-    password: str
-    device_id: str = "default"
+    password: str = Field(min_length=8, max_length=128)
+    device_id: str = Field(default="default", max_length=128)
 
 
 class TokenResponse(BaseModel):

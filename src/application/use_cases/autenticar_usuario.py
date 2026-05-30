@@ -1,6 +1,8 @@
 import hashlib
 from dataclasses import dataclass
 
+from passlib.context import CryptContext
+
 from src.domain.entities.rol import TipoRol
 from src.domain.events.usuario_autenticado_event import UsuarioAutenticadoEvent
 from src.domain.ports.out_.cache_port import CachePort
@@ -10,6 +12,8 @@ from src.domain.ports.out_.token_port import TokenPair, TokenPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 from src.infrastructure.config.settings import settings
+
+pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 @dataclass
@@ -43,10 +47,6 @@ class AutenticarUsuarioUseCase:
         self._event_publisher = event_publisher
 
     async def execute(self, command: AutenticarUsuarioCommand) -> TokenPair:
-        from passlib.context import CryptContext
-
-        pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
         intentos = await self._cache.get_intentos_login(command.correo)
         if intentos >= settings.max_login_attempts:
             raise CuentaBloqueadaError("Cuenta bloqueada temporalmente. Intente en 15 minutos.")

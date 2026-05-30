@@ -30,20 +30,24 @@ async def test_registro_crea_usuario(client):
 async def test_registro_publico_ignora_rol_y_no_escala_a_admin(client):
     """C-01: el registro público nunca puede asignar rol administrador.
 
-    Aunque el cliente envíe `rol=administrador` en el body, el campo debe
-    ser ignorado y el usuario autenticarse siempre como `estudiante`.
+    Con `extra="forbid"` cualquier campo `rol` en el body se rechaza con 422,
+    impidiendo de raíz la escalada de privilegios. Un registro limpio se
+    autentica siempre como `estudiante`.
     """
     payload = {**USER, "rol": "administrador"}
     resp = await client.post(REGISTER, json=payload)
+    assert resp.status_code == 422
+
+    resp = await client.post(REGISTER, json=USER)
     assert resp.status_code == 201
 
     login = await client.post(LOGIN, json=USER)
     assert login.status_code == 200
     access_token = login.json()["access_token"]
 
-    from jose import jwt as jose_jwt
+    import jwt as pyjwt
 
-    claims = jose_jwt.get_unverified_claims(access_token)
+    claims = pyjwt.decode(access_token, options={"verify_signature": False})
     assert claims["rol"] == "estudiante"
     assert claims["rol"] != "administrador"
 

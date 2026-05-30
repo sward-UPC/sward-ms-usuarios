@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     service_name: str = "sward-ms-usuarios"
     authorized_service_keys: str = ""
+    cors_allowed_origins: list[str] = ["http://localhost:5173"]
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment == "development"
 
     @model_validator(mode="after")
     def _validar_secret_key(self) -> "Settings":
