@@ -2,15 +2,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.use_cases.gestionar_usuarios import (
+    EstadoInvalidoError,
+    GestionarUsuariosUseCase,
+    RolNoEncontradoError,
+    UsuarioNoEncontradoError,
+)
 from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import require_admin
-from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
-from src.infrastructure.adapters.out_.rol_postgres_adapter import RolPostgresAdapter
-from src.infrastructure.adapters.out_.usuario_postgres_adapter import UsuarioPostgresAdapter
-from src.infrastructure.db.database import get_session
-from src.infrastructure.dependencies import get_redis_adapter
+from src.infrastructure.dependencies import get_gestionar_usuarios_uc
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -32,9 +33,9 @@ async def list_users(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     _: dict = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
 ):
-    usuarios, total = await UsuarioPostgresAdapter(session).find_all(offset=offset, limit=limit)
+    usuarios, total = await uc.listar(offset=offset, limit=limit)
     return {
         "items": [{"id": str(u.id), "correo": u.correo_institucional, "estado": u.estado} for u in usuarios],
         "total": total,
@@ -46,17 +47,15 @@ async def update_user_status(
     user_id: UUID,
     body: UpdateStatusRequest,
     _: dict = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
-    cache: RedisAdapter = Depends(get_redis_adapter),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
 ):
-    if body.estado not in {"activo", "inactivo", "bloqueado"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Estado inválido.")
-    repo = UsuarioPostgresAdapter(session)
-    if not await repo.find_by_id(user_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
-    await repo.update_estado(user_id, body.estado)
-    await cache.invalidar_permisos(user_id)
-    return {"id": str(user_id), "estado": body.estado}
+    try:
+        usuario = await uc.cambiar_estado(user_id, body.estado)
+    except EstadoInvalidoError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except UsuarioNoEncontradoError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return {"id": str(user_id), "estado": usuario.estado}
 
 
 @router.post("/users/{user_id}/roles", status_code=status.HTTP_200_OK)
@@ -64,23 +63,15 @@ async def assign_user_role(
     user_id: UUID,
     body: AssignRoleRequest,
     _: dict = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
-    cache: RedisAdapter = Depends(get_redis_adapter),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
 ):
     """Asigna un rol a un usuario. Exclusivo de administradores.
 
     Es el único punto del sistema autorizado para conceder roles
     docente/administrador; el registro público nunca puede hacerlo.
     """
-    usuario_repo = UsuarioPostgresAdapter(session)
-    if not await usuario_repo.find_by_id(user_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
-
-    rol_repo = RolPostgresAdapter(session)
-    rol = await rol_repo.find_by_nombre(body.rol)
-    if not rol:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rol no encontrado.")
-
-    await rol_repo.assign_rol(user_id, rol.id)
-    await cache.invalidar_permisos(user_id)
+    try:
+        await uc.asignar_rol(user_id, body.rol)
+    except (UsuarioNoEncontradoError, RolNoEncontradoError) as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return {"id": str(user_id), "rol": str(body.rol)}
