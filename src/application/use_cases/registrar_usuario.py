@@ -56,9 +56,7 @@ class RegistrarUsuarioUseCase:
         if not usuario.validar_correo():
             raise CorreoInvalidoError(f"Correo inválido: {command.correo}")
         if await self._usuario_repo.exists_by_correo(command.correo.lower()):
-            raise CorreoYaRegistradoError(
-                "El correo ya se encuentra registrado. Intente iniciar sesión."
-            )
+            raise CorreoYaRegistradoError("El correo ya se encuentra registrado. Intente iniciar sesión.")
 
         _validar_password(command.password)
 

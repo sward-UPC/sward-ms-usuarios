@@ -1,6 +1,8 @@
 from uuid import UUID
+
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.domain.entities.rol import Permiso, Rol, TipoRol
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.infrastructure.db.models.role_model import RoleModel, user_roles
@@ -11,9 +13,7 @@ class RolPostgresAdapter(RolRepositoryPort):
         self._session = session
 
     async def find_by_nombre(self, nombre: TipoRol) -> Rol | None:
-        r = await self._session.execute(
-            select(RoleModel).where(RoleModel.nombre == str(nombre))
-        )
+        r = await self._session.execute(select(RoleModel).where(RoleModel.nombre == str(nombre)))
         m = r.scalar_one_or_none()
         return _to_entity(m) if m else None
 
@@ -27,16 +27,12 @@ class RolPostgresAdapter(RolRepositoryPort):
 
     async def assign_rol(self, usuario_id: UUID, rol_id: UUID) -> None:
         await self._session.execute(
-            insert(user_roles)
-            .values(user_id=usuario_id, role_id=rol_id)
-            .on_conflict_do_nothing()
+            insert(user_roles).values(user_id=usuario_id, role_id=rol_id).on_conflict_do_nothing()
         )
 
     async def revoke_rol(self, usuario_id: UUID, rol_id: UUID) -> None:
         await self._session.execute(
-            delete(user_roles).where(
-                user_roles.c.user_id == usuario_id, user_roles.c.role_id == rol_id
-            )
+            delete(user_roles).where(user_roles.c.user_id == usuario_id, user_roles.c.role_id == rol_id)
         )
 
     async def find_all(self) -> list[Rol]:

@@ -28,7 +28,6 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 class RegisterRequest(BaseModel):
     correo: EmailStr
     password: str
-    rol: TipoRol = TipoRol.ESTUDIANTE
 
 
 class LoginRequest(BaseModel):
@@ -50,7 +49,16 @@ async def register(
     uc: RegistrarUsuarioUseCase = Depends(get_registrar_usuario_uc),
 ):
     try:
-        u = await uc.execute(RegistrarUsuarioCommand(correo=body.correo, password=body.password, rol=body.rol))
+        # El registro público SIEMPRE crea un usuario con rol ESTUDIANTE.
+        # La asignación de roles docente/administrador es exclusiva del
+        # endpoint admin protegido con require_admin.
+        u = await uc.execute(
+            RegistrarUsuarioCommand(
+                correo=body.correo,
+                password=body.password,
+                rol=TipoRol.ESTUDIANTE,
+            )
+        )
         return {"id": str(u.id), "correo": u.correo_institucional, "estado": u.estado}
     except CorreoYaRegistradoError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))

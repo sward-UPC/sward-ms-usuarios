@@ -8,9 +8,7 @@ from src.infrastructure.config.settings import settings
 
 
 class JwtAdapter(TokenPort):
-    def generar_access_token(
-        self, usuario_id: UUID, rol: str, permisos: list[str]
-    ) -> str:
+    def generar_access_token(self, usuario_id: UUID, rol: str, permisos: list[str]) -> str:
         now = datetime.now(timezone.utc)
         return jwt.encode(
             {
@@ -43,18 +41,14 @@ class JwtAdapter(TokenPort):
 
     def validar_access_token(self, token: str) -> dict:
         try:
-            payload = jwt.decode(
-                token, settings.secret_key, algorithms=[settings.jwt_algorithm]
-            )
+            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
             if payload.get("type") != "access":
                 raise JWTError("Token type inválido")
             return payload
         except JWTError as e:
             raise ValueError(f"Token inválido: {e}") from e
 
-    def generar_par(
-        self, usuario_id: UUID, rol: str, permisos: list[str], device_id: str
-    ) -> TokenPair:
+    def generar_par(self, usuario_id: UUID, rol: str, permisos: list[str], device_id: str) -> TokenPair:
         return TokenPair(
             access_token=self.generar_access_token(usuario_id, rol, permisos),
             refresh_token=self.generar_refresh_token(usuario_id, device_id),
