@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 
 from src.domain.ports.out_.token_port import TokenPair, TokenPort
 from src.infrastructure.config.settings import settings
@@ -41,11 +42,16 @@ class JwtAdapter(TokenPort):
 
     def validar_access_token(self, token: str) -> dict:
         try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+            payload = jwt.decode(
+                token,
+                settings.secret_key,
+                algorithms=["HS256"],
+                options={"require": ["exp", "type"]},
+            )
             if payload.get("type") != "access":
-                raise JWTError("Token type inválido")
+                raise PyJWTError("Token type inválido")
             return payload
-        except JWTError as e:
+        except PyJWTError as e:
             raise ValueError(f"Token inválido: {e}") from e
 
     def generar_par(self, usuario_id: UUID, rol: str, permisos: list[str], device_id: str) -> TokenPair:

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from passlib.context import CryptContext
+
 from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.events.usuario_registrado_event import UsuarioRegistradoEvent
@@ -7,6 +9,8 @@ from src.domain.ports.out_.event_publisher_port import EventPublisherPort
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
+
+pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 @dataclass
@@ -48,10 +52,6 @@ class RegistrarUsuarioUseCase:
         self._event_publisher = event_publisher
 
     async def execute(self, command: RegistrarUsuarioCommand) -> Usuario:
-        from passlib.context import CryptContext
-
-        pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
         usuario = Usuario(correo_institucional=command.correo.lower().strip())
         if not usuario.validar_correo():
             raise CorreoInvalidoError(f"Correo inválido: {command.correo}")

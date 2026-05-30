@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.rol import TipoRol
@@ -16,17 +16,21 @@ router = APIRouter(prefix="/admin", tags=["Administración"])
 
 
 class UpdateStatusRequest(BaseModel):
-    estado: str
+    model_config = ConfigDict(extra="forbid")
+
+    estado: str = Field(max_length=32)
 
 
 class AssignRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     rol: TipoRol
 
 
 @router.get("/users")
 async def list_users(
-    offset: int = 0,
-    limit: int = 20,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
     _: dict = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
