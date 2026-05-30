@@ -1,11 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.use_cases.gestionar_usuarios import (
+    GestionarUsuariosUseCase,
+    UsuarioNoEncontradoError,
+)
 from src.infrastructure.adapters.in_.middleware import get_current_user
-from src.infrastructure.adapters.out_.usuario_postgres_adapter import UsuarioPostgresAdapter
-from src.infrastructure.db.database import get_session
+from src.infrastructure.dependencies import get_gestionar_usuarios_uc
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
@@ -14,11 +16,12 @@ router = APIRouter(prefix="/users", tags=["Usuarios"])
 async def get_user(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
 ):
     if str(user_id) != current_user["sub"] and current_user.get("rol") != "administrador":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado.")
-    u = await UsuarioPostgresAdapter(session).find_by_id(user_id)
-    if not u:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+    try:
+        u = await uc.consultar(user_id)
+    except UsuarioNoEncontradoError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return {"id": str(u.id), "correo": u.correo_institucional, "estado": u.estado}

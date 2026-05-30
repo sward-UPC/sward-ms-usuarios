@@ -4,6 +4,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.use_cases.autenticar_usuario import AutenticarUsuarioUseCase
+from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
@@ -51,4 +52,15 @@ def get_registrar_usuario_uc(
         usuario_repo=UsuarioPostgresAdapter(session),
         rol_repo=RolPostgresAdapter(session),
         event_publisher=events,
+    )
+
+
+def get_gestionar_usuarios_uc(
+    session: AsyncSession = Depends(get_session),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+) -> GestionarUsuariosUseCase:
+    return GestionarUsuariosUseCase(
+        usuario_repo=UsuarioPostgresAdapter(session),
+        rol_repo=RolPostgresAdapter(session),
+        cache=cache,
     )
