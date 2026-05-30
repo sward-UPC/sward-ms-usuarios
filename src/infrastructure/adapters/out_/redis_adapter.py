@@ -15,9 +15,7 @@ class RedisAdapter(CachePort):
         data = await self._redis.get(f"perms:{usuario_id}")
         return json.loads(data) if data else None
 
-    async def set_permisos(
-        self, usuario_id: UUID, permisos: list[str], ttl: int
-    ) -> None:
+    async def set_permisos(self, usuario_id: UUID, permisos: list[str], ttl: int) -> None:
         await self._redis.setex(f"perms:{usuario_id}", ttl, json.dumps(permisos))
 
     async def invalidar_permisos(self, usuario_id: UUID) -> None:
@@ -43,9 +41,7 @@ class RedisAdapter(CachePort):
     async def is_token_blacklisted(self, jti: str) -> bool:
         return await self._redis.exists(f"blacklist:{jti}") > 0
 
-    async def save_refresh_token(
-        self, usuario_id: UUID, device_id: str, token_hash: str, ttl: int
-    ) -> None:
+    async def save_refresh_token(self, usuario_id: UUID, device_id: str, token_hash: str, ttl: int) -> None:
         await self._redis.setex(f"refresh:{usuario_id}:{device_id}", ttl, token_hash)
 
     async def get_refresh_token(self, usuario_id: UUID, device_id: str) -> str | None:

@@ -49,29 +49,21 @@ class AutenticarUsuarioUseCase:
 
         intentos = await self._cache.get_intentos_login(command.correo)
         if intentos >= settings.max_login_attempts:
-            raise CuentaBloqueadaError(
-                "Cuenta bloqueada temporalmente. Intente en 15 minutos."
-            )
+            raise CuentaBloqueadaError("Cuenta bloqueada temporalmente. Intente en 15 minutos.")
 
         usuario = await self._usuario_repo.find_by_correo(command.correo)
 
         if not usuario or not pwd_ctx.verify(command.password, usuario.password_hash):
-            nuevos = await self._cache.incrementar_intentos_login(
-                command.correo, settings.login_attempts_ttl
-            )
+            nuevos = await self._cache.incrementar_intentos_login(command.correo, settings.login_attempts_ttl)
             if nuevos >= settings.max_login_attempts and usuario:
                 usuario.bloquear()
                 await self._usuario_repo.save(usuario)
             raise AutenticacionError("Credenciales inválidas.")
 
         if usuario.estado == EstadoUsuario.BLOQUEADO:
-            raise CuentaBloqueadaError(
-                "Tu cuenta está bloqueada. Contacta al administrador."
-            )
+            raise CuentaBloqueadaError("Tu cuenta está bloqueada. Contacta al administrador.")
         if usuario.estado == EstadoUsuario.INACTIVO:
-            raise AutenticacionError(
-                "Tu cuenta está inactiva. Contacta al administrador."
-            )
+            raise AutenticacionError("Tu cuenta está inactiva. Contacta al administrador.")
 
         await self._cache.limpiar_intentos_login(command.correo)
 
@@ -79,9 +71,7 @@ class AutenticarUsuarioUseCase:
         rol_principal = roles[0].nombre if roles else TipoRol.ESTUDIANTE
         permisos = [p.codigo for r in roles for p in r.permisos]
 
-        await self._cache.set_permisos(
-            usuario.id, permisos, settings.permissions_cache_ttl
-        )
+        await self._cache.set_permisos(usuario.id, permisos, settings.permissions_cache_ttl)
 
         token_pair = self._token_port.generar_par(
             usuario_id=usuario.id,

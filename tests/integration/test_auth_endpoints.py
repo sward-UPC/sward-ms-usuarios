@@ -27,6 +27,28 @@ async def test_registro_crea_usuario(client):
 
 
 @pytest.mark.asyncio
+async def test_registro_publico_ignora_rol_y_no_escala_a_admin(client):
+    """C-01: el registro público nunca puede asignar rol administrador.
+
+    Aunque el cliente envíe `rol=administrador` en el body, el campo debe
+    ser ignorado y el usuario autenticarse siempre como `estudiante`.
+    """
+    payload = {**USER, "rol": "administrador"}
+    resp = await client.post(REGISTER, json=payload)
+    assert resp.status_code == 201
+
+    login = await client.post(LOGIN, json=USER)
+    assert login.status_code == 200
+    access_token = login.json()["access_token"]
+
+    from jose import jwt as jose_jwt
+
+    claims = jose_jwt.get_unverified_claims(access_token)
+    assert claims["rol"] == "estudiante"
+    assert claims["rol"] != "administrador"
+
+
+@pytest.mark.asyncio
 async def test_flujo_registro_y_login_devuelve_token(client):
     reg = await client.post(REGISTER, json=USER)
     assert reg.status_code == 201

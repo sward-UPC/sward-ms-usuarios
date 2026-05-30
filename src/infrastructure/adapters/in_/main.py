@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from src.infrastructure.adapters.in_.admin_router import router as admin_router
 from src.infrastructure.adapters.in_.auth_router import router as auth_router
 from src.infrastructure.adapters.in_.users_router import router as users_router
@@ -19,9 +21,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(
-    title="SWARD — Microservicio de Usuarios", version="0.1.0", lifespan=lifespan
-)
+app = FastAPI(title="SWARD — Microservicio de Usuarios", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
