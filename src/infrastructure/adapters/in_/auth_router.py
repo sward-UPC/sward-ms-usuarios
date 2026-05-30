@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.application.use_cases.autenticar_usuario import (
     AutenticacionError,
     AutenticarUsuarioCommand,
@@ -15,14 +15,12 @@ from src.application.use_cases.registrar_usuario import (
 )
 from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import get_current_user
-from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
-from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
-from src.infrastructure.adapters.out_.rol_postgres_adapter import RolPostgresAdapter
-from src.infrastructure.adapters.out_.usuario_postgres_adapter import (
-    UsuarioPostgresAdapter,
+from src.infrastructure.dependencies import (
+    get_autenticar_usuario_uc,
+    get_redis_adapter,
+    get_registrar_usuario_uc,
 )
-from src.infrastructure.db.database import get_session
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
@@ -46,40 +44,28 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
-@router.post("/register", status_code=201)
-async def register(body: RegisterRequest, session: AsyncSession = Depends(get_session)):
-    uc = RegistrarUsuarioUseCase(
-        UsuarioPostgresAdapter(session),
-        RolPostgresAdapter(session),
-        EventBridgeAdapter(),
-    )
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(
+    body: RegisterRequest,
+    uc: RegistrarUsuarioUseCase = Depends(get_registrar_usuario_uc),
+):
     try:
-        u = await uc.execute(
-            RegistrarUsuarioCommand(
-                correo=body.correo, password=body.password, rol=body.rol
-            )
-        )
+        u = await uc.execute(RegistrarUsuarioCommand(correo=body.correo, password=body.password, rol=body.rol))
         return {"id": str(u.id), "correo": u.correo_institucional, "estado": u.estado}
     except CorreoYaRegistradoError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except (CorreoInvalidoError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)):
-    uc = AutenticarUsuarioUseCase(
-        UsuarioPostgresAdapter(session),
-        RolPostgresAdapter(session),
-        JwtAdapter(),
-        RedisAdapter(),
-        EventBridgeAdapter(),
-    )
+async def login(
+    body: LoginRequest,
+    uc: AutenticarUsuarioUseCase = Depends(get_autenticar_usuario_uc),
+):
     try:
         tp = await uc.execute(
-            AutenticarUsuarioCommand(
-                correo=body.correo, password=body.password, device_id=body.device_id
-            )
+            AutenticarUsuarioCommand(correo=body.correo, password=body.password, device_id=body.device_id)
         )
         return TokenResponse(
             access_token=tp.access_token,
@@ -87,26 +73,31 @@ async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)
             expires_in=tp.expires_in,
         )
     except CuentaBloqueadaError as e:
-        raise HTTPException(status_code=423, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=str(e))
     except AutenticacionError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
 
-@router.post("/logout", status_code=204)
-async def logout(current_user: dict = Depends(get_current_user)):
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    current_user: dict = Depends(get_current_user),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+):
     from datetime import datetime, timezone
 
     exp = current_user.get("exp", 0)
     remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
-    await RedisAdapter().blacklist_token(current_user["jti"], remaining)
+    await cache.blacklist_token(current_user["jti"], remaining)
 
 
-@router.post("/logout-all-devices", status_code=204)
-async def logout_all(current_user: dict = Depends(get_current_user)):
-    from uuid import UUID
+@router.post("/logout-all-devices", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    current_user: dict = Depends(get_current_user),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+):
     from datetime import datetime, timezone
+    from uuid import UUID
 
-    cache = RedisAdapter()
     await cache.invalidar_todos_refresh_tokens(UUID(current_user["sub"]))
     exp = current_user.get("exp", 0)
     remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
