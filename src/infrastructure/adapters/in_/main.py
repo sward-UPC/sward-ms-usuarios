@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SWARD — Microservicio de Usuarios",
     version="0.1.0",
+    openapi_url="/auth/openapi.json",
     description=(
         "Gestiona el registro, la autenticación (JWT) y la administración de "
         "usuarios, roles y permisos de la plataforma SWARD."
