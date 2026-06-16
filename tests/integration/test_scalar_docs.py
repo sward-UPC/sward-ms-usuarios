@@ -12,7 +12,7 @@ async def test_scalar_responde_200(client):
 
 @pytest.mark.asyncio
 async def test_openapi_json_responde_200(client):
-    resp = await client.get("/openapi.json")
+    resp = await client.get("/auth/openapi.json")
     assert resp.status_code == 200
     body = resp.json()
     assert body["info"]["title"] == "SWARD — Microservicio de Usuarios"
