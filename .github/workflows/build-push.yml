@@ -11,7 +11,8 @@ jobs:
     with:
       image_name: sward-ms-usuarios
       service_type: microservice
-      aws_service_name: sward-ms-usuarios
+      aws_service_name: usuarios
       aws_cluster_name: sward-cluster
       needs_shared: true
     secrets: inherit
+
