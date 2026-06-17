@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from scalar_fastapi import get_scalar_api_reference
+from sqlalchemy import text
 
 from src.infrastructure.adapters.in_.admin_router import router as admin_router
 from src.infrastructure.adapters.in_.auth_router import router as auth_router
@@ -19,11 +20,24 @@ from src.infrastructure.db.models.user_model import Base, UserModel  # noqa: F40
 logger = logging.getLogger(__name__)
 
 
+async def _migrate_columns() -> None:
+    """Agrega columnas nuevas a tablas existentes sin romper datos previos."""
+    migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS nombre VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS apellido VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS moodle_user_id INTEGER",
+    ]
+    async with engine.begin() as conn:
+        for stmt in migrations:
+            await conn.execute(text(stmt))
+
+
 async def _init_db() -> None:
     for intento in range(10):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+            await _migrate_columns()
             logger.info("Base de datos lista.")
             return
         except Exception as exc:

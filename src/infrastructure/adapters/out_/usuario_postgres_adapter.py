@@ -30,6 +30,9 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
             m.correo_institucional = usuario.correo_institucional.lower()
             m.password_hash = usuario.password_hash
             m.estado = usuario.estado.value
+            m.nombre = usuario.nombre
+            m.apellido = usuario.apellido
+            m.moodle_user_id = usuario.moodle_user_id
             m.updated_at = usuario.updated_at
         else:
             m = UserModel(
@@ -37,6 +40,9 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
                 correo_institucional=usuario.correo_institucional.lower(),
                 password_hash=usuario.password_hash,
                 estado=usuario.estado.value,
+                nombre=usuario.nombre,
+                apellido=usuario.apellido,
+                moodle_user_id=usuario.moodle_user_id,
                 created_at=usuario.created_at,
                 updated_at=usuario.updated_at,
             )
@@ -63,6 +69,9 @@ def _to_entity(m: UserModel) -> Usuario:
         correo_institucional=m.correo_institucional,
         password_hash=m.password_hash,
         estado=EstadoUsuario(m.estado),
+        nombre=m.nombre,
+        apellido=m.apellido,
+        moodle_user_id=m.moodle_user_id,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )

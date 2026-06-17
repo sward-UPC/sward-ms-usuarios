@@ -78,6 +78,8 @@ class AutenticarUsuarioUseCase:
             rol=str(rol_principal),
             permisos=permisos,
             device_id=command.device_id,
+            nombre=usuario.nombre,
+            moodle_user_id=usuario.moodle_user_id,
         )
 
         refresh_hash = hashlib.sha256(token_pair.refresh_token.encode()).hexdigest()

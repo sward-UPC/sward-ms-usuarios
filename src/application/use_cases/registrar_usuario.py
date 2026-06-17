@@ -18,6 +18,9 @@ class RegistrarUsuarioCommand:
     correo: str
     password: str
     rol: TipoRol = TipoRol.ESTUDIANTE
+    nombre: str | None = None
+    apellido: str | None = None
+    moodle_user_id: int | None = None
 
 
 class CorreoYaRegistradoError(Exception):
@@ -52,7 +55,12 @@ class RegistrarUsuarioUseCase:
         self._event_publisher = event_publisher
 
     async def execute(self, command: RegistrarUsuarioCommand) -> Usuario:
-        usuario = Usuario(correo_institucional=command.correo.lower().strip())
+        usuario = Usuario(
+            correo_institucional=command.correo.lower().strip(),
+            nombre=command.nombre,
+            apellido=command.apellido,
+            moodle_user_id=command.moodle_user_id,
+        )
         if not usuario.validar_correo():
             raise CorreoInvalidoError(f"Correo inválido: {command.correo}")
         if await self._usuario_repo.exists_by_correo(command.correo.lower()):
