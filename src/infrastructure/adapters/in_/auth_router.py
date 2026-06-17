@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from src.application.use_cases.autenticar_usuario import (
     AutenticarUsuarioUseCase,
     CuentaBloqueadaError,
 )
+from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
 from src.application.use_cases.registrar_usuario import (
     CorreoInvalidoError,
     CorreoYaRegistradoError,
@@ -18,9 +20,13 @@ from src.application.use_cases.registrar_usuario import (
 )
 from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import get_current_user
+from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
+from src.infrastructure.config.settings import settings
 from src.infrastructure.dependencies import (
     get_autenticar_usuario_uc,
+    get_gestionar_usuarios_uc,
+    get_jwt_adapter,
     get_redis_adapter,
     get_registrar_usuario_uc,
 )
@@ -37,6 +43,8 @@ class RegisterRequest(BaseModel):
             "example": {
                 "correo": "estudiante@sward.test",
                 "password": "SecurePassword123!",
+                "nombre": "Juan",
+                "apellido": "Pérez",
             }
         },
     )
@@ -52,6 +60,18 @@ class RegisterRequest(BaseModel):
         min_length=8,
         max_length=128,
         example="SecurePassword123!",
+    )
+    nombre: str | None = Field(
+        default=None,
+        description="Nombre del usuario",
+        max_length=100,
+        example="Juan",
+    )
+    apellido: str | None = Field(
+        default=None,
+        description="Apellido del usuario",
+        max_length=100,
+        example="Pérez",
     )
 
 
@@ -196,6 +216,8 @@ async def register(
                 correo=body.correo,
                 password=body.password,
                 rol=TipoRol.ESTUDIANTE,
+                nombre=body.nombre,
+                apellido=body.apellido,
             )
         )
         return UsuarioRegistradoResponse(id=str(u.id), correo=u.correo_institucional, estado=u.estado)
@@ -288,6 +310,85 @@ async def logout(
     exp = current_user.get("exp", 0)
     remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
     await cache.blacklist_token(current_user["jti"], remaining)
+
+
+class RefreshRequest(BaseModel):
+    """Solicitud para refrescar el access token."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str = Field(..., description="JWT de refresco obtenido en el login")
+
+
+class AccessTokenResponse(BaseModel):
+    """Nuevo access token tras refresco exitoso."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponse,
+    responses={
+        200: {"description": "Nuevo access token emitido"},
+        401: {"description": "Refresh token inválido, expirado o revocado"},
+    },
+)
+async def refresh(
+    body: RefreshRequest = Body(...),
+    jwt: JwtAdapter = Depends(get_jwt_adapter),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
+):
+    """Emite un nuevo access token usando el refresh token.
+
+    **Flujo:**
+    1. Valida y decodifica el refresh token
+    2. Verifica que no esté revocado (Redis blacklist)
+    3. Verifica hash almacenado en Redis contra el token recibido
+    4. Obtiene rol/permisos actuales del usuario desde DB
+    5. Emite nuevo access token
+
+    **SLA:** <100ms | **Auth:** Refresh token en body
+    """
+    try:
+        payload = jwt.validar_refresh_token(body.refresh_token)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+
+    jti = payload.get("jti", "")
+    if await cache.is_token_blacklisted(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado.")
+
+    usuario_id = UUID(payload["sub"])
+    device_id = payload.get("device_id", "default")
+    stored_hash = await cache.get_refresh_token(usuario_id, device_id)
+    token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+    if not stored_hash or stored_hash != token_hash:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido.")
+
+    try:
+        usuario = await uc.consultar(usuario_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado.")
+
+    roles = await uc.listar_roles(usuario_id)
+    rol_principal = roles[0].nombre if roles else "estudiante"
+    permisos = [p.codigo for r in roles for p in r.permisos]
+
+    new_access = jwt.generar_access_token(
+        usuario_id=usuario_id,
+        rol=str(rol_principal),
+        permisos=permisos,
+        nombre=usuario.nombre,
+        moodle_user_id=usuario.moodle_user_id,
+    )
+    return AccessTokenResponse(
+        access_token=new_access,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
 
 
 @router.post(

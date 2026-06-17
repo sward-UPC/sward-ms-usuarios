@@ -12,6 +12,9 @@ class Usuario:
     correo_institucional: str = ""
     password_hash: str = ""
     estado: EstadoUsuario = EstadoUsuario.PENDIENTE_VERIFICACION
+    nombre: str | None = None
+    apellido: str | None = None
+    moodle_user_id: int | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

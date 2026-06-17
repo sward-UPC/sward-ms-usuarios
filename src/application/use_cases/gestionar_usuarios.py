@@ -66,6 +66,9 @@ class GestionarUsuariosUseCase:
         usuario.estado = nuevo_estado
         return usuario
 
+    async def listar_roles(self, user_id: UUID):
+        return await self._rol_repo.find_by_usuario_id(user_id)
+
     async def asignar_rol(self, user_id: UUID, rol: TipoRol) -> None:
         usuario = await self._usuario_repo.find_by_id(user_id)
         if not usuario:
