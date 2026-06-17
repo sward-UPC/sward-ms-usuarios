@@ -6,6 +6,7 @@ from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.events.usuario_registrado_event import UsuarioRegistradoEvent
 from src.domain.ports.out_.event_publisher_port import EventPublisherPort
+from src.domain.ports.out_.lms_client_port import LmsClientPort
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
@@ -17,10 +18,6 @@ pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 class RegistrarUsuarioCommand:
     correo: str
     password: str
-    rol: TipoRol = TipoRol.ESTUDIANTE
-    nombre: str | None = None
-    apellido: str | None = None
-    moodle_user_id: int | None = None
 
 
 class CorreoYaRegistradoError(Exception):
@@ -28,6 +25,10 @@ class CorreoYaRegistradoError(Exception):
 
 
 class CorreoInvalidoError(Exception):
+    pass
+
+
+class CorreoNoEnMoodleError(Exception):
     pass
 
 
@@ -49,22 +50,38 @@ class RegistrarUsuarioUseCase:
         usuario_repo: UsuarioRepositoryPort,
         rol_repo: RolRepositoryPort,
         event_publisher: EventPublisherPort,
+        lms_client: LmsClientPort,
     ):
         self._usuario_repo = usuario_repo
         self._rol_repo = rol_repo
         self._event_publisher = event_publisher
+        self._lms_client = lms_client
 
     async def execute(self, command: RegistrarUsuarioCommand) -> Usuario:
+        correo = command.correo.lower().strip()
+
+        datos_moodle = await self._lms_client.buscar_usuario_por_correo(correo)
+        if datos_moodle is None:
+            raise CorreoNoEnMoodleError(
+                "Correo no registrado en la plataforma educativa. "
+                "Usa el correo institucional con el que accedes a Moodle."
+            )
+
+        rol_moodle = TipoRol(datos_moodle["rol"])
+        moodle_user_id: int = datos_moodle["moodle_user_id"]
+        nombre: str | None = datos_moodle.get("nombre")
+        apellido: str | None = datos_moodle.get("apellido")
+
         usuario = Usuario(
-            correo_institucional=command.correo.lower().strip(),
-            nombre=command.nombre,
-            apellido=command.apellido,
-            moodle_user_id=command.moodle_user_id,
+            correo_institucional=correo,
+            nombre=nombre,
+            apellido=apellido,
+            moodle_user_id=moodle_user_id,
         )
         if not usuario.validar_correo():
             raise CorreoInvalidoError(f"Correo inválido: {command.correo}")
-        if await self._usuario_repo.exists_by_correo(command.correo.lower()):
-            raise CorreoYaRegistradoError("El correo ya se encuentra registrado. Intente iniciar sesión.")
+        if await self._usuario_repo.exists_by_correo(correo):
+            raise CorreoYaRegistradoError("El correo ya se encuentra registrado. Intenta iniciar sesión.")
 
         _validar_password(command.password)
 
@@ -72,7 +89,7 @@ class RegistrarUsuarioUseCase:
         usuario.estado = EstadoUsuario.ACTIVO
         guardado = await self._usuario_repo.save(usuario)
 
-        rol = await self._rol_repo.find_by_nombre(command.rol)
+        rol = await self._rol_repo.find_by_nombre(rol_moodle)
         if rol:
             await self._rol_repo.assign_rol(guardado.id, rol.id)
 
@@ -80,7 +97,7 @@ class RegistrarUsuarioUseCase:
             UsuarioRegistradoEvent(
                 usuario_id=guardado.id,
                 correo=guardado.correo_institucional,
-                rol=str(command.rol),
+                rol=str(rol_moodle),
             )
         )
         return guardado
