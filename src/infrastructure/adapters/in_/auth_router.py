@@ -14,11 +14,11 @@ from src.application.use_cases.autenticar_usuario import (
 from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
 from src.application.use_cases.registrar_usuario import (
     CorreoInvalidoError,
+    CorreoNoEnMoodleError,
     CorreoYaRegistradoError,
     RegistrarUsuarioCommand,
     RegistrarUsuarioUseCase,
 )
-from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import get_current_user
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
@@ -35,43 +35,33 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
 class RegisterRequest(BaseModel):
-    """Solicitud para registrar un nuevo usuario."""
+    """Solicitud para registrar un nuevo usuario.
+
+    El rol, nombre y apellido se obtienen automáticamente de Moodle
+    usando el correo institucional como clave de búsqueda.
+    """
 
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "example": {
-                "correo": "estudiante@sward.test",
+                "correo": "estudiante01@sward.edu",
                 "password": "SecurePassword123!",
-                "nombre": "Juan",
-                "apellido": "Pérez",
             }
         },
     )
 
     correo: EmailStr = Field(
         ...,
-        description="Correo institucional (debe ser único)",
-        example="estudiante@sward.test",
+        description="Correo institucional registrado en Moodle",
+        example="estudiante01@sward.edu",
     )
     password: str = Field(
         ...,
-        description="Contraseña (8-128 caracteres)",
+        description="Contraseña (mín. 8 chars, 1 mayúscula, 1 número)",
         min_length=8,
         max_length=128,
         example="SecurePassword123!",
-    )
-    nombre: str | None = Field(
-        default=None,
-        description="Nombre del usuario",
-        max_length=100,
-        example="Juan",
-    )
-    apellido: str | None = Field(
-        default=None,
-        description="Apellido del usuario",
-        max_length=100,
-        example="Pérez",
     )
 
 
@@ -197,34 +187,28 @@ async def register(
     body: RegisterRequest = Body(...),
     uc: RegistrarUsuarioUseCase = Depends(get_registrar_usuario_uc),
 ):
-    """Registra un nuevo usuario en el sistema.
+    """Registra un nuevo usuario verificando su identidad en Moodle.
 
     **Flujo:**
-    1. Valida correo (formato, unicidad) y contraseña (min 8 chars)
-    2. Hashea la contraseña con bcrypt
-    3. Crea usuario con rol ESTUDIANTE y estado PENDIENTE_VERIFICACION
-    4. Retorna datos del usuario creado
+    1. Busca el correo en Moodle via ms-integracion-lms
+    2. Si no existe → 400 "Correo no registrado en la plataforma educativa"
+    3. Asigna automáticamente el rol (estudiante/docente) detectado en Moodle
+    4. Guarda nombre, apellido y moodle_user_id desde Moodle
+    5. Retorna datos del usuario creado
 
-    **Nota:** Solo registro público con rol fijo ESTUDIANTE.
-    Asignación de docente/admin exclusiva del endpoint admin.
-
-    **SLA:** <200ms | **Auth:** Público | **Campos requeridos:** correo, password
+    **SLA:** <300ms | **Auth:** Público | **Campos requeridos:** correo, password
     """
     try:
-        u = await uc.execute(
-            RegistrarUsuarioCommand(
-                correo=body.correo,
-                password=body.password,
-                rol=TipoRol.ESTUDIANTE,
-                nombre=body.nombre,
-                apellido=body.apellido,
-            )
-        )
+        u = await uc.execute(RegistrarUsuarioCommand(correo=body.correo, password=body.password))
         return UsuarioRegistradoResponse(id=str(u.id), correo=u.correo_institucional, estado=u.estado)
+    except CorreoNoEnMoodleError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except CorreoYaRegistradoError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except (CorreoInvalidoError, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
 
 
 @router.post(

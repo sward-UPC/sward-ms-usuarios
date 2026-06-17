@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     authorized_service_keys: str = ""
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
+    # Integración interna con ms-integracion-lms
+    lms_service_url: str = "http://integracion-lms.sward.local:8000"
+    lms_service_key: str = "dev-lms-key"
+    use_mock_lms: bool = True
+
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
