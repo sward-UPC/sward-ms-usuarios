@@ -14,4 +14,5 @@ redis>=5.0.0
 boto3>=1.34.0
 httpx>=0.27.0
 scalar-fastapi>=1.0
+psutil>=5.9.0
 sward-shared @ git+https://github.com/sward-UPC/sward-shared.git@main
