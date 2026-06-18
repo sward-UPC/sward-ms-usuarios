@@ -23,6 +23,12 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
         m = r.scalar_one_or_none()
         return _to_entity(m) if m else None
 
+    async def find_by_ids(self, ids: list[UUID]) -> list[Usuario]:
+        if not ids:
+            return []
+        rows = (await self._session.execute(select(UserModel).where(UserModel.id.in_(ids)))).scalars().all()
+        return [_to_entity(m) for m in rows]
+
     async def save(self, usuario: Usuario) -> Usuario:
         r = await self._session.execute(select(UserModel).where(UserModel.id == usuario.id))
         m = r.scalar_one_or_none()
