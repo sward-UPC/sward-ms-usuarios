@@ -50,3 +50,6 @@ class RedisAdapter(CachePort):
     async def invalidar_todos_refresh_tokens(self, usuario_id: UUID) -> None:
         async for key in self._redis.scan_iter(match=f"refresh:{usuario_id}:*"):
             await self._redis.delete(key)
+
+    async def ping(self) -> bool:
+        return bool(await self._redis.ping())
