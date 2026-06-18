@@ -49,6 +49,13 @@ class GestionarUsuariosUseCase:
             raise UsuarioNoEncontradoError("Usuario no encontrado.")
         return usuario
 
+    async def consultar_varios(self, ids: list[UUID]) -> list[Usuario]:
+        """Consulta múltiples usuarios por UUID en una sola query (uso s2s).
+
+        No lanza error si algún ID no existe: retorna solo los encontrados.
+        """
+        return await self._usuario_repo.find_by_ids(ids)
+
     async def cambiar_estado(self, user_id: UUID, estado: str) -> Usuario:
         try:
             nuevo_estado = EstadoUsuario(estado)
