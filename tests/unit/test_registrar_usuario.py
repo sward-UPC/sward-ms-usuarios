@@ -47,6 +47,15 @@ async def test_registro_exitoso(use_case):
 
 
 @pytest.mark.asyncio
+async def test_id_determinístico_desde_moodle(use_case):
+    """El UUID del usuario se deriva de moodle_user_id (coincide con trazabilidad)."""
+    from sward_shared.identidad import id_sward_desde_moodle
+
+    u = await use_case.execute(RegistrarUsuarioCommand(correo="nuevo@upc.edu.pe", password="SecurePass1"))
+    assert u.id == id_sward_desde_moodle(7)
+
+
+@pytest.mark.asyncio
 async def test_correo_no_en_moodle():
     repo = AsyncMock()
     rol_repo = AsyncMock()
