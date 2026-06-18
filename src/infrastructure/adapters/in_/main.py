@@ -32,12 +32,61 @@ async def _migrate_columns() -> None:
             await conn.execute(text(stmt))
 
 
+async def _seed_admin() -> None:
+    """Crea el usuario administrador inicial si no existe. Idempotente."""
+    from uuid import uuid4
+
+    from passlib.context import CryptContext
+    from sqlalchemy import text
+
+    from src.infrastructure.config.settings import settings
+
+    correo = getattr(settings, "admin_seed_email", "admin@sward.upc.edu.pe")
+    password = getattr(settings, "admin_seed_password", None)
+    if not password:
+        logger.info("Admin seed: ADMIN_SEED_PASSWORD no configurado, omitiendo.")
+        return
+
+    pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    pw_hash = pwd_ctx.hash(password)
+
+    async with engine.begin() as conn:
+        existing = await conn.execute(
+            text("SELECT id FROM users WHERE correo_institucional = :correo"),
+            {"correo": correo},
+        )
+        if existing.fetchone():
+            logger.info("Admin seed: usuario %s ya existe, omitiendo.", correo)
+            return
+
+        uid = uuid4()
+        await conn.execute(
+            text(
+                "INSERT INTO users(id, correo_institucional, password_hash, estado, nombre, apellido)"
+                " VALUES(:id, :correo, :pw, 'activo', 'Admin', 'SWARD')"
+            ),
+            {"id": uid, "correo": correo, "pw": pw_hash},
+        )
+
+        rol = await conn.execute(text("SELECT id FROM roles WHERE nombre = 'administrador'"))
+        rol_row = rol.fetchone()
+        if rol_row:
+            await conn.execute(
+                text("INSERT INTO user_roles(user_id, role_id) VALUES(:uid, :rid) ON CONFLICT DO NOTHING"),
+                {"uid": uid, "rid": rol_row[0]},
+            )
+            logger.info("Admin seed: usuario %s creado con rol administrador.", correo)
+        else:
+            logger.warning("Admin seed: tabla roles vacía, no se asignó rol administrador.")
+
+
 async def _init_db() -> None:
     for intento in range(10):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             await _migrate_columns()
+            await _seed_admin()
             logger.info("Base de datos lista.")
             return
         except Exception as exc:

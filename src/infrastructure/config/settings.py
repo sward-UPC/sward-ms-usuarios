@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     lms_service_key: str = "dev-lms-key"
     use_mock_lms: bool = True
 
+    # Seed de administrador inicial (solo corre si ambas están definidas)
+    admin_seed_email: str = "admin@sward.upc.edu.pe"
+    admin_seed_password: str = ""
+
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
