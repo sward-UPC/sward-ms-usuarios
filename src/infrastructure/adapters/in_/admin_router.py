@@ -28,18 +28,31 @@ class AssignRoleRequest(BaseModel):
     rol: TipoRol
 
 
-@router.get("/users")
+@router.get("/users", summary="Listar usuarios con rol (admin)")
 async def list_users(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     _: dict = Depends(require_admin),
     uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
 ):
-    usuarios, total = await uc.listar(offset=offset, limit=limit)
-    return {
-        "items": [{"id": str(u.id), "correo": u.correo_institucional, "estado": u.estado} for u in usuarios],
-        "total": total,
-    }
+    """Retorna lista paginada de usuarios con nombre, apellido, rol y moodle_user_id.
+
+    **Auth:** JWT administrador | **Paginación:** offset + limit (máx 100)
+    """
+    usuarios_con_rol, total = await uc.listar_con_roles(offset=offset, limit=limit)
+    items = [
+        {
+            "id": str(u.id),
+            "correo": u.correo_institucional,
+            "nombre": u.nombre,
+            "apellido": u.apellido,
+            "estado": u.estado if isinstance(u.estado, str) else u.estado.value,
+            "rol": rol,
+            "moodle_user_id": u.moodle_user_id,
+        }
+        for u, rol in usuarios_con_rol
+    ]
+    return {"items": items, "total": total}
 
 
 @router.patch("/users/{user_id}/status")

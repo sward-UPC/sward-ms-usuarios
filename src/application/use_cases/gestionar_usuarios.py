@@ -69,6 +69,16 @@ class GestionarUsuariosUseCase:
     async def listar_roles(self, user_id: UUID):
         return await self._rol_repo.find_by_usuario_id(user_id)
 
+    async def listar_con_roles(self, offset: int = 0, limit: int = 20) -> tuple[list[tuple], int]:
+        """Retorna (usuarios, total) donde cada usuario incluye su rol principal."""
+        usuarios, total = await self._usuario_repo.find_all(offset=offset, limit=limit)
+        result = []
+        for u in usuarios:
+            roles = await self._rol_repo.find_by_usuario_id(u.id)
+            rol_principal = str(roles[0].nombre) if roles else "estudiante"
+            result.append((u, rol_principal))
+        return result, total
+
     async def asignar_rol(self, user_id: UUID, rol: TipoRol) -> None:
         usuario = await self._usuario_repo.find_by_id(user_id)
         if not usuario:
