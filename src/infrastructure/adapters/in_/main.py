@@ -32,6 +32,32 @@ async def _migrate_columns() -> None:
             await conn.execute(text(stmt))
 
 
+async def _seed_roles() -> None:
+    """Inserta los roles base si no existen. Idempotente."""
+    from uuid import uuid4
+
+    roles = [
+        ("estudiante", "Estudiante de la plataforma"),
+        ("docente", "Docente de la plataforma"),
+        ("administrador", "Administrador del sistema"),
+    ]
+    async with engine.begin() as conn:
+        for nombre, descripcion in roles:
+            existing = await conn.execute(
+                text("SELECT id FROM roles WHERE nombre = :nombre"),
+                {"nombre": nombre},
+            )
+            if not existing.fetchone():
+                await conn.execute(
+                    text(
+                        "INSERT INTO roles(id, nombre, descripcion)"
+                        " VALUES(:id, :nombre, :descripcion)"
+                    ),
+                    {"id": uuid4(), "nombre": nombre, "descripcion": descripcion},
+                )
+                logger.info("Roles seed: rol '%s' creado.", nombre)
+
+
 async def _seed_admin() -> None:
     """Crea el usuario administrador inicial si no existe. Idempotente."""
     from uuid import uuid4
@@ -87,6 +113,7 @@ async def _init_db() -> None:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             await _migrate_columns()
+            await _seed_roles()
             await _seed_admin()
             logger.info("Base de datos lista.")
             return
