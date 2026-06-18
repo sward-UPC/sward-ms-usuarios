@@ -53,3 +53,10 @@ class RedisAdapter(CachePort):
 
     async def ping(self) -> bool:
         return bool(await self._redis.ping())
+
+    async def contar_sesiones_activas(self) -> int:
+        """Cuenta los refresh tokens vigentes en Redis (= sesiones activas)."""
+        total = 0
+        async for _ in self._redis.scan_iter(match="refresh:*"):
+            total += 1
+        return total
