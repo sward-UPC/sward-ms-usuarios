@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     lms_service_key: str = "dev-lms-key"
     use_mock_lms: bool = True
 
+    # Clave de servicio saliente propia (X-Service-Key en llamadas s2s).
+    service_key: str = ""
+    # Namespace de Cloud Map para construir las URLs internas de salud.
+    internal_namespace: str = "sward.local"
+    internal_port: int = 8000
+    # URL interna de ms-trazabilidad (KPI "Dominio Plataforma" del panel admin).
+    trazabilidad_service_url: str = "http://trazabilidad.sward.local:8000"
+
     # Seed de administrador inicial (solo corre si ambas están definidas)
     admin_seed_email: str = "admin@sward.upc.edu.pe"
     admin_seed_password: str = ""
