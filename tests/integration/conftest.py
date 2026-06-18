@@ -45,6 +45,10 @@ class FakeUsuarioRepo(UsuarioRepositoryPort):
     async def find_by_id(self, id: UUID) -> Usuario | None:
         return self._por_id.get(id)
 
+    async def find_by_ids(self, ids: list[UUID]) -> list[Usuario]:
+        idset = set(ids)
+        return [u for u in self._por_id.values() if u.id in idset]
+
     async def save(self, usuario: Usuario) -> Usuario:
         self._por_id[usuario.id] = usuario
         return usuario
