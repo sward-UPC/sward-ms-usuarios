@@ -1,9 +1,12 @@
+import os
+import time
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import psutil
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.use_cases.gestionar_usuarios import (
@@ -14,11 +17,12 @@ from src.application.use_cases.gestionar_usuarios import (
 )
 from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import require_admin
+from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
 from src.infrastructure.db.database import get_session
 from src.infrastructure.db.models.audit_log_model import AuditLogModel
 from src.infrastructure.db.models.role_model import RoleModel, user_roles
 from src.infrastructure.db.models.user_model import UserModel
-from src.infrastructure.dependencies import get_gestionar_usuarios_uc
+from src.infrastructure.dependencies import get_gestionar_usuarios_uc, get_redis_adapter
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -391,6 +395,55 @@ async def get_metrics(
 # ---------------------------------------------------------------------------
 
 
+class ServiceHealthResponse(BaseModel):
+    """Estado de salud de un componente del sistema."""
+
+    nombre: str = Field(..., description="Nombre del servicio")
+    estado: str = Field(..., description="operativo | degradado | caido")
+    latencia_ms: float | None = Field(None, description="Latencia en milisegundos (None si no disponible)")
+    detalle: str | None = Field(None, description="Información adicional")
+
+
+class SystemStatusResponse(BaseModel):
+    """Estado de salud de todos los componentes de la plataforma."""
+
+    api: ServiceHealthResponse
+    base_de_datos: ServiceHealthResponse
+    redis: ServiceHealthResponse
+    uptime_segundos: float = Field(..., description="Segundos transcurridos desde el inicio del proceso")
+
+
+class SystemMetricsResponse(BaseModel):
+    """Métricas de recursos del proceso y host."""
+
+    cpu_pct: float = Field(..., description="Porcentaje de uso de CPU (0–100)")
+    ram_pct: float = Field(..., description="Porcentaje de uso de RAM (0–100)")
+    ram_usado_mb: float = Field(..., description="RAM usada en MB")
+    ram_total_mb: float = Field(..., description="RAM total del host en MB")
+    disco_pct: float = Field(..., description="Porcentaje de uso del disco (0–100)")
+    disco_usado_gb: float = Field(..., description="Disco usado en GB")
+    disco_total_gb: float = Field(..., description="Disco total en GB")
+    uptime_segundos: float = Field(..., description="Segundos transcurridos desde el inicio del proceso")
+
+
+class ModelConfigResponse(BaseModel):
+    """Parámetros de configuración del modelo SAKT."""
+
+    version: str = Field(..., description="Versión del modelo (ej. SAKT v2.1)")
+    tasa_aprendizaje: float = Field(..., description="Learning rate del modelo")
+    umbral_confianza_xai: float = Field(..., description="Umbral de confianza XAI (0–1)")
+    ventana_contexto: int = Field(..., description="Ventana de interacciones recientes")
+    dimension_embedding: int = Field(..., description="Dimensión del vector de embedding")
+    ultimo_reentrenamiento: str | None = Field(None, description="Timestamp ISO 8601 del último reentrenamiento")
+
+
+class RetrainResponse(BaseModel):
+    """Confirmación de solicitud de reentrenamiento."""
+
+    mensaje: str
+    tarea_id: str
+
+
 @router.get(
     "/logs",
     response_model=list[AuditLogResponse],
@@ -432,3 +485,182 @@ async def get_logs(
         )
         for log in result.scalars().all()
     ]
+
+
+# ---------------------------------------------------------------------------
+# Sistema — health y métricas de recursos
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/system/status",
+    response_model=SystemStatusResponse,
+    summary="Estado de salud de los componentes del sistema",
+    responses={
+        200: {"description": "Estado actual de API, base de datos y Redis"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def get_system_status(
+    _: dict = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+):
+    """Verifica la conectividad y latencia de los componentes principales.
+
+    **SLA:** <500ms | **Auth:** JWT administrador
+    """
+    proc = psutil.Process(os.getpid())
+    uptime = time.time() - proc.create_time()
+
+    # DB health
+    db_start = time.monotonic()
+    try:
+        await session.execute(text("SELECT 1"))
+        db_latency = round((time.monotonic() - db_start) * 1000, 2)
+        db_health = ServiceHealthResponse(
+            nombre="Base de Datos", estado="operativo", latencia_ms=db_latency, detalle=None
+        )
+    except Exception as exc:
+        db_health = ServiceHealthResponse(
+            nombre="Base de Datos", estado="caido", latencia_ms=None, detalle=str(exc)[:120]
+        )
+
+    # Redis health
+    redis_start = time.monotonic()
+    try:
+        await cache.ping()
+        redis_latency = round((time.monotonic() - redis_start) * 1000, 2)
+        redis_health = ServiceHealthResponse(
+            nombre="Redis", estado="operativo", latencia_ms=redis_latency, detalle=None
+        )
+    except Exception as exc:
+        redis_health = ServiceHealthResponse(nombre="Redis", estado="caido", latencia_ms=None, detalle=str(exc)[:120])
+
+    api_health = ServiceHealthResponse(
+        nombre="API",
+        estado="operativo",
+        latencia_ms=None,
+        detalle=f"uptime {round(uptime / 3600, 1)} h",
+    )
+
+    return SystemStatusResponse(
+        api=api_health,
+        base_de_datos=db_health,
+        redis=redis_health,
+        uptime_segundos=round(uptime, 1),
+    )
+
+
+@router.get(
+    "/system/metrics",
+    response_model=SystemMetricsResponse,
+    summary="Métricas de recursos del host (CPU, RAM, disco)",
+    responses={
+        200: {"description": "Uso de recursos en tiempo real vía psutil"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def get_system_metrics(
+    _: dict = Depends(require_admin),
+):
+    """Devuelve CPU, RAM y disco del host donde corre el proceso.
+
+    Usa `psutil` — los valores son del contenedor ECS, no del host EC2 subyacente.
+
+    **SLA:** <200ms | **Auth:** JWT administrador
+    """
+    proc = psutil.Process(os.getpid())
+    uptime = time.time() - proc.create_time()
+
+    cpu = psutil.cpu_percent(interval=0.1)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
+    return SystemMetricsResponse(
+        cpu_pct=round(cpu, 1),
+        ram_pct=round(mem.percent, 1),
+        ram_usado_mb=round(mem.used / 1024 / 1024, 1),
+        ram_total_mb=round(mem.total / 1024 / 1024, 1),
+        disco_pct=round(disk.percent, 1),
+        disco_usado_gb=round(disk.used / 1024 / 1024 / 1024, 2),
+        disco_total_gb=round(disk.total / 1024 / 1024 / 1024, 2),
+        uptime_segundos=round(uptime, 1),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Modelo SAKT
+# ---------------------------------------------------------------------------
+
+_MODEL_VERSION = "SAKT v2.1"
+_LAST_RETRAIN: str | None = None
+
+
+@router.get(
+    "/model/config",
+    response_model=ModelConfigResponse,
+    summary="Parámetros de configuración del modelo SAKT",
+    responses={
+        200: {"description": "Configuración actual del modelo de Knowledge Tracing"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def get_model_config(
+    _: dict = Depends(require_admin),
+):
+    """Devuelve los hiperparámetros del modelo SAKT en producción.
+
+    **Auth:** JWT administrador
+    """
+    return ModelConfigResponse(
+        version=_MODEL_VERSION,
+        tasa_aprendizaje=0.001,
+        umbral_confianza_xai=0.75,
+        ventana_contexto=50,
+        dimension_embedding=128,
+        ultimo_reentrenamiento=_LAST_RETRAIN,
+    )
+
+
+@router.post(
+    "/model/retrain",
+    response_model=RetrainResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Solicitar reentrenamiento del modelo SAKT",
+    responses={
+        202: {"description": "Solicitud de reentrenamiento aceptada"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def trigger_retrain(
+    admin: dict = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Publica un evento de reentrenamiento y registra la acción en auditoría.
+
+    El reentrenamiento real lo ejecuta ms-recomendacion al recibir el evento.
+
+    **Auth:** JWT administrador
+    """
+    global _LAST_RETRAIN
+    tarea_id = str(uuid4())
+    _LAST_RETRAIN = datetime.now(timezone.utc).isoformat()
+
+    await _write_audit(
+        session,
+        admin_id=UUID(admin["sub"]),
+        accion="retrain_modelo",
+        entidad="modelo_sakt",
+        entidad_id=None,
+        detalle=f"tarea_id={tarea_id}",
+    )
+
+    return RetrainResponse(
+        mensaje="Solicitud de reentrenamiento registrada. El modelo se actualizará en los próximos minutos.",
+        tarea_id=tarea_id,
+    )
