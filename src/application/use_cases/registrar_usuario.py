@@ -9,6 +9,7 @@ from src.domain.ports.out_.event_publisher_port import EventPublisherPort
 from src.domain.ports.out_.lms_client_port import LmsClientPort
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
+from src.domain.services.vinculo_moodle import id_sward_desde_moodle
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 
 pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
@@ -73,6 +74,9 @@ class RegistrarUsuarioUseCase:
         apellido: str | None = datos_moodle.get("apellido")
 
         usuario = Usuario(
+            # UUID determinístico desde Moodle: coincide con el estudiante_id que
+            # usa ms-trazabilidad, permitiendo cruzar datos entre servicios.
+            id=id_sward_desde_moodle(moodle_user_id),
             correo_institucional=correo,
             nombre=nombre,
             apellido=apellido,
