@@ -19,6 +19,7 @@ from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
 from src.domain.entities.rol import Permiso, Rol, TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.ports.out_.cache_port import CachePort
+from src.domain.ports.out_.lms_client_port import LmsClientPort
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.infrastructure.adapters.in_.main import app
@@ -142,6 +143,19 @@ class _StubEventPublisher:
         return None
 
 
+class _FakeLmsClient(LmsClientPort):
+    """Simula que el correo SÍ existe en Moodle como estudiante."""
+
+    async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
+        return {
+            "moodle_user_id": 7,
+            "nombre": "Alumno",
+            "apellido": "Prueba",
+            "correo": correo,
+            "rol": "estudiante",
+        }
+
+
 @pytest_asyncio.fixture
 async def client():
     usuario_repo = FakeUsuarioRepo()
@@ -149,9 +163,15 @@ async def client():
     cache = FakeRedisCache()
     jwt = JwtAdapter()
     events = _StubEventPublisher()
+    lms_client = _FakeLmsClient()
 
     def _registrar_uc():
-        return RegistrarUsuarioUseCase(usuario_repo=usuario_repo, rol_repo=rol_repo, event_publisher=events)
+        return RegistrarUsuarioUseCase(
+            usuario_repo=usuario_repo,
+            rol_repo=rol_repo,
+            event_publisher=events,
+            lms_client=lms_client,
+        )
 
     def _autenticar_uc():
         return AutenticarUsuarioUseCase(
