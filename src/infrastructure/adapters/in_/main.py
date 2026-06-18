@@ -62,8 +62,9 @@ async def _seed_admin() -> None:
         uid = uuid4()
         await conn.execute(
             text(
-                "INSERT INTO users(id, correo_institucional, password_hash, estado, nombre, apellido, created_at)"
-                " VALUES(:id, :correo, :pw, 'activo', 'Admin', 'SWARD', NOW())"
+                "INSERT INTO users"
+                "(id, correo_institucional, password_hash, estado, nombre, apellido, created_at, updated_at)"
+                " VALUES(:id, :correo, :pw, 'activo', 'Admin', 'SWARD', NOW(), NOW())"
             ),
             {"id": uid, "correo": correo, "pw": pw_hash},
         )
