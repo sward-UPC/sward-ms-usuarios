@@ -29,7 +29,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     service_name: str = "sward-ms-usuarios"
     authorized_service_keys: str = ""
+    # Clave de servicio entrante para ms-trazabilidad (inyectada por CDK).
+    authorized_trazabilidad_key: str = ""
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
+
+    @property
+    def authorized_service_keys_set(self) -> set[str]:
+        keys = {k.strip() for k in self.authorized_service_keys.split(",") if k.strip()}
+        if self.authorized_trazabilidad_key:
+            keys.add(self.authorized_trazabilidad_key)
+        return keys
 
     # Integración interna con ms-integracion-lms
     lms_service_url: str = "http://integracion-lms.sward.local:8000"

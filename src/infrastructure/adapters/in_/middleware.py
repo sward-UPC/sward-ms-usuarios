@@ -1,11 +1,22 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
+from src.infrastructure.config.settings import settings
 from src.infrastructure.dependencies import get_jwt_adapter, get_redis_adapter
 
 security = HTTPBearer()
+
+
+async def require_service_key(x_service_key: str = Header(default="")) -> None:
+    """Autoriza llamadas service-to-service (s2s) vía header X-Service-Key.
+
+    Valida contra el conjunto de claves autorizadas. Usado por endpoints
+    /internal consumidos por otros microservicios (p.ej. ms-trazabilidad).
+    """
+    if not x_service_key or x_service_key not in settings.authorized_service_keys_set:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Service key inválida.")
 
 
 async def get_current_user(

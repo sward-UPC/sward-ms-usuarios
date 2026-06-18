@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from src.infrastructure.adapters.in_.admin_router import router as admin_router
 from src.infrastructure.adapters.in_.auth_router import router as auth_router
+from src.infrastructure.adapters.in_.internal_router import router as internal_router
 from src.infrastructure.adapters.in_.users_router import router as users_router
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import engine
@@ -177,6 +178,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_router)
+app.include_router(internal_router)
 
 
 @app.get("/scalar", include_in_schema=False)
