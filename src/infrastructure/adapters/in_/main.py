@@ -49,10 +49,7 @@ async def _seed_roles() -> None:
             )
             if not existing.fetchone():
                 await conn.execute(
-                    text(
-                        "INSERT INTO roles(id, nombre, descripcion)"
-                        " VALUES(:id, :nombre, :descripcion)"
-                    ),
+                    text("INSERT INTO roles(id, nombre, descripcion) VALUES(:id, :nombre, :descripcion)"),
                     {"id": uuid4(), "nombre": nombre, "descripcion": descripcion},
                 )
                 logger.info("Roles seed: rol '%s' creado.", nombre)
