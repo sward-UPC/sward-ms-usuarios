@@ -1,8 +1,10 @@
+import asyncio
 import os
 import time
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import httpx
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,6 +20,7 @@ from src.application.use_cases.gestionar_usuarios import (
 from src.domain.entities.rol import TipoRol
 from src.infrastructure.adapters.in_.middleware import require_admin
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
+from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import get_session
 from src.infrastructure.db.models.audit_log_model import AuditLogModel
 from src.infrastructure.db.models.role_model import RoleModel, user_roles
@@ -156,6 +159,12 @@ class MetricsResponse(BaseModel):
     usuarios_activos: int = Field(..., description="Usuarios con estado activo", example=38)
     usuarios_inactivos: int = Field(..., description="Usuarios sin estado activo", example=4)
     usuarios_por_rol: UsuariosPorRolResponse
+    sesiones_activas: int = Field(0, description="Sesiones activas (refresh tokens vigentes en Redis)", example=12)
+    dominio_plataforma: float | None = Field(
+        None,
+        description="Dominio promedio de la plataforma (0-100); None si no disponible",
+        example=68.5,
+    )
 
 
 class AuditLogResponse(BaseModel):
@@ -357,10 +366,12 @@ async def assign_user_role(
 async def get_metrics(
     _: dict = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
+    cache: RedisAdapter = Depends(get_redis_adapter),
 ):
     """Retorna totales de usuarios, activos, inactivos y distribución por rol.
 
-    Consulta directa a la base de datos — no usa caché.
+    Incluye sesiones activas (Redis) y el dominio promedio de la plataforma
+    (s2s a ms-trazabilidad, no bloqueante: si falla queda en None).
 
     **SLA:** <150ms | **Auth:** JWT administrador
     """
@@ -378,6 +389,13 @@ async def get_metrics(
     roles_result = await session.execute(roles_q)
     por_rol: dict[str, int] = {row.nombre: row.total for row in roles_result}
 
+    try:
+        sesiones_activas = await cache.contar_sesiones_activas()
+    except Exception:  # noqa: BLE001 — métrica best-effort, no debe tumbar el panel
+        sesiones_activas = 0
+
+    dominio_plataforma = await _consultar_dominio_plataforma()
+
     return MetricsResponse(
         total_usuarios=total,
         usuarios_activos=activos,
@@ -387,7 +405,25 @@ async def get_metrics(
             docente=por_rol.get("docente", 0),
             administrador=por_rol.get("administrador", 0),
         ),
+        sesiones_activas=sesiones_activas,
+        dominio_plataforma=dominio_plataforma,
     )
+
+
+async def _consultar_dominio_plataforma() -> float | None:
+    """Dominio promedio de la plataforma vía ms-trazabilidad (best-effort).
+
+    Devuelve None si el servicio no responde para que el panel degrade limpio.
+    """
+    url = f"{settings.trazabilidad_service_url}/internal/metrics/platform"
+    headers = {"X-Service-Key": settings.service_key}
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json().get("dominio_promedio")
+    except Exception:  # noqa: BLE001 — KPI opcional, nunca debe romper /metrics
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -575,12 +611,17 @@ async def get_system_metrics(
     proc = psutil.Process(os.getpid())
     uptime = time.time() - proc.create_time()
 
-    cpu = psutil.cpu_percent(interval=0.1)
+    # Ventana de 0.5s para una muestra real (interval=0.1 daba casi siempre 0.0
+    # en contenedores ociosos). Se combina con el CPU del propio proceso para no
+    # reportar 0 cuando el servicio sí está trabajando.
+    cpu_sistema = psutil.cpu_percent(interval=0.5)
+    cpu_proceso = proc.cpu_percent(interval=None)
+    cpu = round(max(cpu_sistema, cpu_proceso), 1)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
 
     return SystemMetricsResponse(
-        cpu_pct=round(cpu, 1),
+        cpu_pct=cpu,
         ram_pct=round(mem.percent, 1),
         ram_usado_mb=round(mem.used / 1024 / 1024, 1),
         ram_total_mb=round(mem.total / 1024 / 1024, 1),
@@ -589,6 +630,108 @@ async def get_system_metrics(
         disco_total_gb=round(disk.total / 1024 / 1024 / 1024, 2),
         uptime_segundos=round(uptime, 1),
     )
+
+
+# ---------------------------------------------------------------------------
+# Estado de las bases de datos de toda la plataforma
+# ---------------------------------------------------------------------------
+
+# Microservicios con base de datos propia (RDS independiente por servicio).
+_DB_SERVICES = [
+    "usuarios",
+    "trazabilidad",
+    "recomendacion",
+    "cursos-recursos",
+    "integracion-lms",
+    "xai",
+]
+
+
+class DatabaseHealthResponse(BaseModel):
+    """Estado de la base de datos de un microservicio."""
+
+    servicio: str = Field(..., description="Nombre del microservicio")
+    base_de_datos: str = Field(..., description="Nombre de la base de datos")
+    estado: str = Field(..., description="operativo | caido")
+    latencia_ms: float | None = Field(None, description="Latencia del chequeo en ms")
+    detalle: str | None = Field(None, description="Información adicional / error")
+
+
+async def _check_own_db(session: AsyncSession) -> DatabaseHealthResponse:
+    """Chequeo profundo de la DB propia (SELECT 1)."""
+    start = time.monotonic()
+    try:
+        await session.execute(text("SELECT 1"))
+        return DatabaseHealthResponse(
+            servicio="usuarios",
+            base_de_datos="sward_usuarios",
+            estado="operativo",
+            latencia_ms=round((time.monotonic() - start) * 1000, 2),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return DatabaseHealthResponse(
+            servicio="usuarios",
+            base_de_datos="sward_usuarios",
+            estado="caido",
+            latencia_ms=None,
+            detalle=str(exc)[:120],
+        )
+
+
+async def _check_service_db(client: httpx.AsyncClient, name: str) -> DatabaseHealthResponse:
+    """Sondea la salud de otro servicio vía Cloud Map (su /health confirma que
+    el servicio y su DB arrancaron; un servicio con DB caída no queda healthy).
+    """
+    db_name = f"sward_{name.replace('-', '_')}"
+    url = f"http://{name}.{settings.internal_namespace}:{settings.internal_port}/health"
+    start = time.monotonic()
+    try:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return DatabaseHealthResponse(
+            servicio=name,
+            base_de_datos=db_name,
+            estado="operativo",
+            latencia_ms=round((time.monotonic() - start) * 1000, 2),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return DatabaseHealthResponse(
+            servicio=name,
+            base_de_datos=db_name,
+            estado="caido",
+            latencia_ms=None,
+            detalle=str(exc)[:120],
+        )
+
+
+@router.get(
+    "/system/databases",
+    response_model=list[DatabaseHealthResponse],
+    summary="Estado de las bases de datos de todos los microservicios",
+    responses={
+        200: {"description": "Estado de cada base de datos de la plataforma"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def get_databases_status(
+    _: dict = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Estado de las 6 bases de datos de la plataforma.
+
+    La DB propia (usuarios) se chequea en profundidad (SELECT 1); las demás se
+    sondean vía el /health de cada servicio por Cloud Map, en paralelo.
+
+    **SLA:** <2s | **Auth:** JWT administrador
+    """
+    own = await _check_own_db(session)
+    otros = [s for s in _DB_SERVICES if s != "usuarios"]
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        resultados = await asyncio.gather(*(_check_service_db(client, name) for name in otros))
+    # Mantiene el orden de _DB_SERVICES (usuarios primero).
+    por_nombre = {own.servicio: own, **{r.servicio: r for r in resultados}}
+    return [por_nombre[name] for name in _DB_SERVICES]
 
 
 # ---------------------------------------------------------------------------
