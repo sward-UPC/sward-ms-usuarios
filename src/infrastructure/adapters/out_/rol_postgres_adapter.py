@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.rol import Permiso, Rol, TipoRol
