@@ -27,6 +27,8 @@ async def _migrate_columns() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS nombre VARCHAR(100)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS apellido VARCHAR(100)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS moodle_user_id INTEGER",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color VARCHAR(20)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
     ]
     async with engine.begin() as conn:
         for stmt in migrations:

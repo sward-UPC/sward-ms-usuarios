@@ -11,7 +11,11 @@ from src.application.use_cases.autenticar_usuario import (
     AutenticarUsuarioUseCase,
     CuentaBloqueadaError,
 )
-from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
+from src.application.use_cases.gestionar_usuarios import (
+    GestionarUsuariosUseCase,
+    PasswordActualInvalidaError,
+    UsuarioNoEncontradoError,
+)
 from src.application.use_cases.registrar_usuario import (
     CorreoInvalidoError,
     CorreoNoEnMoodleError,
@@ -404,6 +408,84 @@ async def logout_all(
     **SLA:** <100ms | **Auth:** JWT requerido | **Uso:** cambios de contraseña/seguridad
     """
     await cache.invalidar_todos_refresh_tokens(UUID(current_user["sub"]))
+    exp = current_user.get("exp", 0)
+    remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
+    await cache.blacklist_token(current_user["jti"], remaining)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Solicitud para cambiar la contraseña del usuario autenticado."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "password_actual": "OldPassword123!",
+                "password_nueva": "NewSecurePassword456!",
+            }
+        },
+    )
+
+    password_actual: str = Field(
+        ...,
+        description="Contraseña actual del usuario",
+        min_length=1,
+        max_length=128,
+        example="OldPassword123!",
+    )
+    password_nueva: str = Field(
+        ...,
+        description="Nueva contraseña (mín. 8 chars, 1 mayúscula, 1 número)",
+        min_length=8,
+        max_length=128,
+        example="NewSecurePassword456!",
+    )
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Contraseña actualizada; sesiones invalidadas"},
+        400: {
+            "description": "La contraseña actual es incorrecta",
+            "content": {"application/json": {"example": {"detail": "La contraseña actual es incorrecta."}}},
+        },
+        401: {"description": "JWT inválido o ausente"},
+    },
+)
+async def change_password(
+    body: ChangePasswordRequest = Body(...),
+    current_user: dict = Depends(get_current_user),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+):
+    """Cambia la contraseña del usuario autenticado.
+
+    **Flujo:**
+    1. Verifica la contraseña actual contra el hash almacenado
+    2. Rehashea y persiste la nueva contraseña
+    3. Invalida todos los refresh tokens (logout en todos los dispositivos)
+    4. Blacklistea el access token actual
+
+    **Auth:** JWT requerido
+    """
+    if body.password_nueva == body.password_actual:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe ser distinta de la actual.",
+        )
+    try:
+        await uc.cambiar_password(
+            UUID(current_user["sub"]),
+            password_actual=body.password_actual,
+            password_nueva=body.password_nueva,
+        )
+    except PasswordActualInvalidaError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except UsuarioNoEncontradoError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
     exp = current_user.get("exp", 0)
     remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
     await cache.blacklist_token(current_user["jti"], remaining)

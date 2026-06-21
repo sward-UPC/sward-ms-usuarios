@@ -15,6 +15,8 @@ class Usuario:
     nombre: str | None = None
     apellido: str | None = None
     moodle_user_id: int | None = None
+    avatar_color: str | None = None
+    avatar_url: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
