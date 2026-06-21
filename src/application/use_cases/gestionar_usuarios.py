@@ -1,4 +1,7 @@
+from datetime import datetime, timezone
 from uuid import UUID
+
+from passlib.context import CryptContext
 
 from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
@@ -7,8 +10,15 @@ from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 
+# Mismo contexto de hashing usado en autenticación (argon2 + bcrypt).
+pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
+
 
 class UsuarioNoEncontradoError(Exception):
+    pass
+
+
+class PasswordActualInvalidaError(Exception):
     pass
 
 
@@ -55,6 +65,49 @@ class GestionarUsuariosUseCase:
         No lanza error si algún ID no existe: retorna solo los encontrados.
         """
         return await self._usuario_repo.find_by_ids(ids)
+
+    async def actualizar_perfil(
+        self,
+        user_id: UUID,
+        avatar_color: str | None = None,
+        avatar_url: str | None = None,
+    ) -> Usuario:
+        """Actualiza únicamente los campos personalizables del perfil (avatar).
+
+        Nombre, correo, institución y rol provienen de Moodle y son de solo
+        lectura: nunca se modifican aquí.
+        """
+        usuario = await self._usuario_repo.find_by_id(user_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado.")
+
+        usuario.avatar_color = avatar_color
+        usuario.avatar_url = avatar_url
+        usuario.updated_at = datetime.now(timezone.utc)
+        return await self._usuario_repo.save(usuario)
+
+    async def cambiar_password(
+        self,
+        user_id: UUID,
+        password_actual: str,
+        password_nueva: str,
+    ) -> None:
+        """Cambia la contraseña verificando la actual contra el hash almacenado.
+
+        Tras el cambio se invalidan todos los refresh tokens del usuario para
+        forzar un nuevo inicio de sesión en todos los dispositivos.
+        """
+        usuario = await self._usuario_repo.find_by_id(user_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado.")
+
+        if not pwd_ctx.verify(password_actual, usuario.password_hash):
+            raise PasswordActualInvalidaError("La contraseña actual es incorrecta.")
+
+        usuario.password_hash = pwd_ctx.hash(password_nueva)
+        usuario.updated_at = datetime.now(timezone.utc)
+        await self._usuario_repo.save(usuario)
+        await self._cache.invalidar_todos_refresh_tokens(user_id)
 
     async def cambiar_estado(self, user_id: UUID, estado: str) -> Usuario:
         try:

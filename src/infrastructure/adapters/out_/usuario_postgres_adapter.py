@@ -39,6 +39,8 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
             m.nombre = usuario.nombre
             m.apellido = usuario.apellido
             m.moodle_user_id = usuario.moodle_user_id
+            m.avatar_color = usuario.avatar_color
+            m.avatar_url = usuario.avatar_url
             m.updated_at = usuario.updated_at
         else:
             m = UserModel(
@@ -49,6 +51,8 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
                 nombre=usuario.nombre,
                 apellido=usuario.apellido,
                 moodle_user_id=usuario.moodle_user_id,
+                avatar_color=usuario.avatar_color,
+                avatar_url=usuario.avatar_url,
                 created_at=usuario.created_at,
                 updated_at=usuario.updated_at,
             )
@@ -78,6 +82,8 @@ def _to_entity(m: UserModel) -> Usuario:
         nombre=m.nombre,
         apellido=m.apellido,
         moodle_user_id=m.moodle_user_id,
+        avatar_color=m.avatar_color,
+        avatar_url=m.avatar_url,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
