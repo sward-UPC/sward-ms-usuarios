@@ -105,6 +105,22 @@ async def update_me(
     return _user_response(u, current_user)
 
 
+@router.delete("/me", summary="Elimina la cuenta del usuario autenticado")
+async def delete_me(
+    current_user: dict = Depends(get_current_user),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
+):
+    """Elimina (desactiva) la cuenta del usuario autenticado y revoca sus sesiones.
+
+    **Auth:** JWT requerido
+    """
+    try:
+        await uc.eliminar_cuenta(UUID(current_user["sub"]))
+    except UsuarioNoEncontradoError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return {"ok": True}
+
+
 @router.get("/{user_id}", summary="Perfil de un usuario por UUID")
 async def get_user(
     user_id: UUID,
