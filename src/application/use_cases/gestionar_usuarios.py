@@ -126,6 +126,16 @@ class GestionarUsuariosUseCase:
         usuario.estado = nuevo_estado
         return usuario
 
+    async def eliminar_cuenta(self, user_id: UUID) -> None:
+        """Elimina la cuenta del propio usuario (soft-delete): la desactiva y
+        revoca sus sesiones para que pierda el acceso de inmediato."""
+        usuario = await self._usuario_repo.find_by_id(user_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado.")
+        await self._usuario_repo.update_estado(user_id, EstadoUsuario.INACTIVO.value)
+        await self._cache.invalidar_todos_refresh_tokens(user_id)
+        await self._cache.invalidar_permisos(user_id)
+
     async def listar_roles(self, user_id: UUID):
         return await self._rol_repo.find_by_usuario_id(user_id)
 
