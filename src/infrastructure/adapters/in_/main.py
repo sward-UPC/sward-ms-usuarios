@@ -11,10 +11,12 @@ from sqlalchemy import text
 from src.infrastructure.adapters.in_.admin_router import router as admin_router
 from src.infrastructure.adapters.in_.auth_router import router as auth_router
 from src.infrastructure.adapters.in_.internal_router import router as internal_router
+from src.infrastructure.adapters.in_.notifications_router import router as notifications_router
 from src.infrastructure.adapters.in_.users_router import router as users_router
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import engine
 from src.infrastructure.db.models.audit_log_model import AuditLogModel  # noqa: F401
+from src.infrastructure.db.models.notification_model import NotificationModel  # noqa: F401
 from src.infrastructure.db.models.role_model import PermissionModel, RoleModel  # noqa: F401
 from src.infrastructure.db.models.user_model import Base, UserModel  # noqa: F401
 
@@ -145,6 +147,7 @@ app = FastAPI(
         {"name": "Autenticación", "description": "Registro, inicio y cierre de sesión, y emisión de tokens JWT."},
         {"name": "Usuarios", "description": "Consulta y gestión del perfil de los usuarios."},
         {"name": "Administración", "description": "Operaciones administrativas sobre roles y permisos."},
+        {"name": "Notificaciones", "description": "Notificaciones del usuario (feedback, alertas, logros)."},
         {"name": "Health", "description": "Sonda de estado del servicio."},
     ],
 )
@@ -181,6 +184,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_router)
 app.include_router(internal_router)
+app.include_router(notifications_router)
 
 
 @app.get("/scalar", include_in_schema=False)
