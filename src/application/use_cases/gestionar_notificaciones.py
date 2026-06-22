@@ -15,9 +15,7 @@ class GestionarNotificacionesUseCase:
         self, destinatario_id: UUID, *, solo_no_leidas: bool = False, limit: int = 50
     ) -> tuple[list[Notificacion], int]:
         """Devuelve las notificaciones del usuario y el conteo de no leídas."""
-        items = await self._repo.find_by_destinatario(
-            destinatario_id, solo_no_leidas=solo_no_leidas, limit=limit
-        )
+        items = await self._repo.find_by_destinatario(destinatario_id, solo_no_leidas=solo_no_leidas, limit=limit)
         no_leidas = await self._repo.count_no_leidas(destinatario_id)
         return items, no_leidas
 
