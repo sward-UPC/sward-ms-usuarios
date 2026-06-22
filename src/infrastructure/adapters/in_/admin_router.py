@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from src.infrastructure.db.models.audit_log_model import AuditLogModel
 from src.infrastructure.db.models.role_model import RoleModel, user_roles
 from src.infrastructure.db.models.user_model import UserModel
 from src.infrastructure.dependencies import get_gestionar_usuarios_uc, get_redis_adapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -466,11 +469,21 @@ class ModelConfigResponse(BaseModel):
     """Parámetros de configuración del modelo SAKT."""
 
     version: str = Field(..., description="Versión del modelo (ej. SAKT v2.1)")
-    tasa_aprendizaje: float = Field(..., description="Learning rate del modelo")
+    tasa_aprendizaje: float | None = Field(None, description="Learning rate del modelo")
     umbral_confianza_xai: float = Field(..., description="Umbral de confianza XAI (0–1)")
-    ventana_contexto: int = Field(..., description="Ventana de interacciones recientes")
-    dimension_embedding: int = Field(..., description="Dimensión del vector de embedding")
-    ultimo_reentrenamiento: str | None = Field(None, description="Timestamp ISO 8601 del último reentrenamiento")
+    ventana_contexto: int | None = Field(None, description="Longitud de secuencia (seq_len) real")
+    dimension_embedding: int | None = Field(None, description="Dimensión del embedding real")
+    ultimo_reentrenamiento: str | None = Field(None, description="Timestamp ISO 8601 del último reentrenamiento real")
+    # Métricas/estado REALES leídas del artefacto en S3 (vía ms-recomendacion).
+    datos_disponibles: bool = Field(True, description="False si no se pudo leer el modelo (servicio apagado)")
+    modelo_real: bool = Field(False, description="True si el entorno corre el modelo real (no mock)")
+    test_auc: float | None = Field(None, description="AUC de validación del modelo entrenado")
+    n_conceptos: int | None = Field(None, description="Número de conceptos/skills del modelo")
+    n_heads: int | None = Field(None, description="Cabezas de atención del SAKT")
+    n_layers: int | None = Field(None, description="Bloques de atención del SAKT")
+    n_estudiantes: int | None = Field(None, description="Estudiantes usados en el último entreno")
+    n_muestras: int | None = Field(None, description="Secuencias usadas en el último entreno")
+    epochs: int | None = Field(None, description="Épocas del último entrenamiento")
 
 
 class RetrainResponse(BaseModel):
@@ -739,7 +752,6 @@ async def get_databases_status(
 # ---------------------------------------------------------------------------
 
 _MODEL_VERSION = "SAKT v2.1"
-_LAST_RETRAIN: str | None = None
 
 
 @router.get(
@@ -755,17 +767,49 @@ _LAST_RETRAIN: str | None = None
 async def get_model_config(
     _: dict = Depends(require_admin),
 ):
-    """Devuelve los hiperparámetros del modelo SAKT en producción.
+    """Devuelve los hiperparámetros y métricas REALES del modelo SAKT.
+
+    Lee la metadata del artefacto entrenado vía ms-recomendacion (s2s), que la
+    obtiene del checkpoint en S3: fecha real de reentrenamiento, seq_len, embedding,
+    AUC de validación, etc. Si recomendación está apagado, responde
+    `datos_disponibles=False` (sin inventar valores).
 
     **Auth:** JWT administrador
     """
+    url = (
+        f"http://recomendacion.{settings.internal_namespace}:{settings.internal_port}"
+        "/recommendations/internal/model-info"
+    )
+    headers = {"X-Service-Key": settings.service_key}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            info = resp.json()
+    except Exception as exc:  # noqa: BLE001 — el panel debe degradar, no romper
+        logger.warning("No se pudo leer la info real del modelo: %s", exc)
+        return ModelConfigResponse(
+            version=_MODEL_VERSION,
+            umbral_confianza_xai=0.75,
+            datos_disponibles=False,
+        )
+
     return ModelConfigResponse(
         version=_MODEL_VERSION,
-        tasa_aprendizaje=0.001,
+        tasa_aprendizaje=info.get("learning_rate"),
         umbral_confianza_xai=0.75,
-        ventana_contexto=50,
-        dimension_embedding=128,
-        ultimo_reentrenamiento=_LAST_RETRAIN,
+        ventana_contexto=info.get("seq_len"),
+        dimension_embedding=info.get("emb_size"),
+        ultimo_reentrenamiento=info.get("entrenado_en"),
+        datos_disponibles=True,
+        modelo_real=not info.get("mock", True),
+        test_auc=info.get("test_auc"),
+        n_conceptos=info.get("n_conceptos"),
+        n_heads=info.get("n_heads"),
+        n_layers=info.get("n_layers"),
+        n_estudiantes=info.get("n_estudiantes"),
+        n_muestras=info.get("n_muestras"),
+        epochs=info.get("epochs"),
     )
 
 
@@ -784,15 +828,16 @@ async def trigger_retrain(
     admin: dict = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Publica un evento de reentrenamiento y registra la acción en auditoría.
+    """Registra en auditoría una solicitud de reentrenamiento del modelo SAKT.
 
-    El reentrenamiento real lo ejecuta ms-recomendacion al recibir el evento.
+    El reentrenamiento real es un job programado (GitHub Actions semanal) que
+    reentrena con las interacciones reales y sube el checkpoint a S3; la fecha y
+    métricas resultantes se reflejan luego en `/model/config`. Esta acción deja
+    constancia de la solicitud manual, no dispara el entrenamiento al instante.
 
     **Auth:** JWT administrador
     """
-    global _LAST_RETRAIN
     tarea_id = str(uuid4())
-    _LAST_RETRAIN = datetime.now(timezone.utc).isoformat()
 
     await _write_audit(
         session,
@@ -804,6 +849,10 @@ async def trigger_retrain(
     )
 
     return RetrainResponse(
-        mensaje="Solicitud de reentrenamiento registrada. El modelo se actualizará en los próximos minutos.",
+        mensaje=(
+            "Solicitud registrada en auditoría. El reentrenamiento se ejecuta de "
+            "forma programada (semanal) con las interacciones reales; la fecha y el "
+            "AUC se actualizarán al completarse."
+        ),
         tarea_id=tarea_id,
     )
