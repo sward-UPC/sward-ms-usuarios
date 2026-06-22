@@ -34,9 +34,7 @@ async def listar_notificaciones(
 
     **Auth:** JWT requerido
     """
-    items, no_leidas = await uc.listar(
-        UUID(current_user["sub"]), solo_no_leidas=solo_no_leidas, limit=limit
-    )
+    items, no_leidas = await uc.listar(UUID(current_user["sub"]), solo_no_leidas=solo_no_leidas, limit=limit)
     return {
         "items": [_notif_response(n) for n in items],
         "no_leidas": no_leidas,
