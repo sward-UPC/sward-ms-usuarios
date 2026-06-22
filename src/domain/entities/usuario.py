@@ -17,6 +17,7 @@ class Usuario:
     moodle_user_id: int | None = None
     avatar_color: str | None = None
     avatar_url: str | None = None
+    notif_logros: bool = True
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
