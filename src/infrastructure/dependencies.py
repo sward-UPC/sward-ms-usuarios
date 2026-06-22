@@ -12,8 +12,8 @@ from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdap
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.lms_client_adapter import LmsClientAdapter
 from src.infrastructure.adapters.out_.mock_lms_client_adapter import MockLmsClientAdapter
-from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
 from src.infrastructure.adapters.out_.notificacion_postgres_adapter import NotificacionPostgresAdapter
+from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
 from src.infrastructure.adapters.out_.rol_postgres_adapter import RolPostgresAdapter
 from src.infrastructure.adapters.out_.usuario_postgres_adapter import UsuarioPostgresAdapter
 from src.infrastructure.config.settings import settings
