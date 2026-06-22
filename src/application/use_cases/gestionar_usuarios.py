@@ -86,6 +86,15 @@ class GestionarUsuariosUseCase:
         usuario.updated_at = datetime.now(timezone.utc)
         return await self._usuario_repo.save(usuario)
 
+    async def actualizar_preferencias(self, user_id: UUID, notif_logros: bool) -> Usuario:
+        """Actualiza las preferencias de notificación del usuario."""
+        usuario = await self._usuario_repo.find_by_id(user_id)
+        if not usuario:
+            raise UsuarioNoEncontradoError("Usuario no encontrado.")
+        usuario.notif_logros = notif_logros
+        usuario.updated_at = datetime.now(timezone.utc)
+        return await self._usuario_repo.save(usuario)
+
     async def cambiar_password(
         self,
         user_id: UUID,
