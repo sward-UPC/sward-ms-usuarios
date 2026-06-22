@@ -23,9 +23,17 @@ def _user_response(u, current_user: dict) -> dict:
         "moodle_user_id": u.moodle_user_id,
         "avatar_color": u.avatar_color,
         "avatar_url": u.avatar_url,
+        "notif_logros": getattr(u, "notif_logros", True),
         "rol": current_user.get("rol"),
         "permisos": current_user.get("permisos", []),
     }
+
+
+class PreferenciasRequest(BaseModel):
+    """Preferencias de notificación del usuario."""
+
+    model_config = ConfigDict(extra="forbid")
+    notif_logros: bool = Field(description="Recibir notificaciones de logros (racha/recursos)")
 
 
 class ActualizarPerfilRequest(BaseModel):
@@ -100,6 +108,23 @@ async def update_me(
             avatar_color=body.avatar_color,
             avatar_url=body.avatar_url,
         )
+    except UsuarioNoEncontradoError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return _user_response(u, current_user)
+
+
+@router.put("/me/preferences", summary="Actualiza preferencias de notificación")
+async def update_preferences(
+    body: PreferenciasRequest = Body(...),
+    current_user: dict = Depends(get_current_user),
+    uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
+):
+    """Actualiza las preferencias de notificación del usuario autenticado.
+
+    **Auth:** JWT requerido
+    """
+    try:
+        u = await uc.actualizar_preferencias(UUID(current_user["sub"]), body.notif_logros)
     except UsuarioNoEncontradoError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return _user_response(u, current_user)
