@@ -9,6 +9,9 @@ from src.application.use_cases.registrar_usuario import (
     RegistrarUsuarioUseCase,
 )
 from src.domain.ports.out_.lms_client_port import LmsClientPort
+from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
+
+_HASHER = PasslibPasswordHasher()
 
 MOODLE_ESTUDIANTE = {
     "moodle_user_id": 7,
@@ -35,7 +38,7 @@ def use_case():
     rol_repo = AsyncMock()
     rol_repo.find_by_nombre.return_value = None
     lms = FakeLmsClient(MOODLE_ESTUDIANTE)
-    return RegistrarUsuarioUseCase(repo, rol_repo, MagicMock(), lms)
+    return RegistrarUsuarioUseCase(repo, rol_repo, MagicMock(), lms, _HASHER)
 
 
 @pytest.mark.asyncio
@@ -60,7 +63,7 @@ async def test_correo_no_en_moodle():
     repo = AsyncMock()
     rol_repo = AsyncMock()
     lms = FakeLmsClient(None)
-    uc = RegistrarUsuarioUseCase(repo, rol_repo, MagicMock(), lms)
+    uc = RegistrarUsuarioUseCase(repo, rol_repo, MagicMock(), lms, _HASHER)
     with pytest.raises(CorreoNoEnMoodleError):
         await uc.execute(RegistrarUsuarioCommand(correo="fantasma@upc.edu.pe", password="SecurePass1"))
 
