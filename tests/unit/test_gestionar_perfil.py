@@ -6,10 +6,12 @@ from src.application.use_cases.gestionar_usuarios import (
     GestionarUsuariosUseCase,
     PasswordActualInvalidaError,
     UsuarioNoEncontradoError,
-    pwd_ctx,
 )
 from src.domain.entities.usuario import Usuario
 from src.domain.value_objects.estado_usuario import EstadoUsuario
+from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
+
+pwd_ctx = PasslibPasswordHasher()
 
 
 def _make_usuario():
@@ -24,7 +26,7 @@ def _make_use_case(usuario):
     usuario_repo.find_by_id.return_value = usuario
     usuario_repo.save.side_effect = lambda u: u
     cache = AsyncMock()
-    return GestionarUsuariosUseCase(usuario_repo, AsyncMock(), cache), usuario_repo, cache
+    return GestionarUsuariosUseCase(usuario_repo, AsyncMock(), cache, pwd_ctx), usuario_repo, cache
 
 
 @pytest.mark.asyncio
