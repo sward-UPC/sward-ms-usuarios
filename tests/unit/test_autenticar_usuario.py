@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.application.use_cases.autenticar_usuario import (
+    AutenticacionConfig,
     AutenticacionError,
     AutenticarUsuarioCommand,
     AutenticarUsuarioUseCase,
@@ -12,13 +13,20 @@ from src.domain.entities.rol import Rol, TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.ports.out_.token_port import TokenPair
 from src.domain.value_objects.estado_usuario import EstadoUsuario
+from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
+
+_HASHER = PasslibPasswordHasher()
+_CONFIG = AutenticacionConfig(
+    max_login_attempts=5,
+    login_attempts_ttl=900,
+    permissions_cache_ttl=600,
+    refresh_token_expire_days=7,
+)
 
 
 def _make_usuario():
-    from passlib.context import CryptContext
-
     u = Usuario(correo_institucional="test@upc.edu.pe")
-    u.password_hash = CryptContext(schemes=["bcrypt"], deprecated="auto").hash("Password1")
+    u.password_hash = _HASHER.hash("Password1")
     u.estado = EstadoUsuario.ACTIVO
     return u
 
@@ -36,7 +44,7 @@ def use_case():
     cache = AsyncMock()
     cache.get_intentos_login.return_value = 0
     cache.incrementar_intentos_login.return_value = 1
-    return AutenticarUsuarioUseCase(usuario_repo, rol_repo, token_port, cache, MagicMock())
+    return AutenticarUsuarioUseCase(usuario_repo, rol_repo, token_port, cache, MagicMock(), _HASHER, _CONFIG)
 
 
 @pytest.mark.asyncio
