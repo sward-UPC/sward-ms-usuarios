@@ -14,7 +14,7 @@ from uuid import UUID
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from src.application.use_cases.autenticar_usuario import AutenticarUsuarioUseCase
+from src.application.use_cases.autenticar_usuario import AutenticacionConfig, AutenticarUsuarioUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
 from src.domain.entities.rol import Permiso, Rol, TipoRol
 from src.domain.entities.usuario import Usuario
@@ -24,6 +24,7 @@ from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.infrastructure.adapters.in_.main import app
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
+from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
 from src.infrastructure.dependencies import (
     get_autenticar_usuario_uc,
     get_jwt_adapter,
@@ -168,6 +169,7 @@ async def client():
     jwt = JwtAdapter()
     events = _StubEventPublisher()
     lms_client = _FakeLmsClient()
+    hasher = PasslibPasswordHasher()
 
     def _registrar_uc():
         return RegistrarUsuarioUseCase(
@@ -175,6 +177,7 @@ async def client():
             rol_repo=rol_repo,
             event_publisher=events,
             lms_client=lms_client,
+            password_hasher=hasher,
         )
 
     def _autenticar_uc():
@@ -184,6 +187,13 @@ async def client():
             token_port=jwt,
             cache=cache,
             event_publisher=events,
+            password_hasher=hasher,
+            config=AutenticacionConfig(
+                max_login_attempts=5,
+                login_attempts_ttl=900,
+                permissions_cache_ttl=600,
+                refresh_token_expire_days=7,
+            ),
         )
 
     app.dependency_overrides[get_registrar_usuario_uc] = _registrar_uc
