@@ -3,8 +3,8 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.ports.out_.notificacion_repository_port import NotificacionRepositoryPort
 from src.domain.entities.notificacion import Notificacion
-from src.domain.ports.out_.notificacion_repository_port import NotificacionRepositoryPort
 from src.infrastructure.db.models.notification_model import NotificationModel
 
 

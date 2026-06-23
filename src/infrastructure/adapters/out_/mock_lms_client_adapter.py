@@ -1,4 +1,4 @@
-from src.domain.ports.out_.lms_client_port import LmsClientPort
+from src.application.ports.out_.lms_client_port import LmsClientPort
 
 _MOCK_USERS: dict[str, dict] = {
     "estudiante01@sward.edu": {
