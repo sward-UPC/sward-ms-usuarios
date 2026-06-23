@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
 from src.domain.entities.usuario import Usuario
 from src.infrastructure.adapters.in_.main import app
+from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
 from src.infrastructure.config.settings import settings
 from src.infrastructure.dependencies import get_gestionar_usuarios_uc
 from tests.integration.conftest import FakeRedisCache, FakeRolRepo, FakeUsuarioRepo
@@ -26,7 +27,12 @@ async def test_internal_users_by_ids_devuelve_perfiles(monkeypatch):
         moodle_user_id=11,
     )
     await repo.save(usuario)
-    uc = GestionarUsuariosUseCase(usuario_repo=repo, rol_repo=FakeRolRepo(), cache=FakeRedisCache())
+    uc = GestionarUsuariosUseCase(
+        usuario_repo=repo,
+        rol_repo=FakeRolRepo(),
+        cache=FakeRedisCache(),
+        password_hasher=PasslibPasswordHasher(),
+    )
     app.dependency_overrides[get_gestionar_usuarios_uc] = lambda: uc
 
     transport = ASGITransport(app=app)

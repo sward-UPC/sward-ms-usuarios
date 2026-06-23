@@ -1,17 +1,13 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from passlib.context import CryptContext
-
 from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.ports.out_.cache_port import CachePort
+from src.domain.ports.out_.password_hasher_port import PasswordHasherPort
 from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
-
-# Mismo contexto de hashing usado en autenticación (argon2 + bcrypt).
-pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 class UsuarioNoEncontradoError(Exception):
@@ -45,10 +41,12 @@ class GestionarUsuariosUseCase:
         usuario_repo: UsuarioRepositoryPort,
         rol_repo: RolRepositoryPort,
         cache: CachePort,
+        password_hasher: PasswordHasherPort,
     ):
         self._usuario_repo = usuario_repo
         self._rol_repo = rol_repo
         self._cache = cache
+        self._password_hasher = password_hasher
 
     async def listar(self, offset: int = 0, limit: int = 20) -> tuple[list[Usuario], int]:
         return await self._usuario_repo.find_all(offset=offset, limit=limit)
@@ -110,10 +108,10 @@ class GestionarUsuariosUseCase:
         if not usuario:
             raise UsuarioNoEncontradoError("Usuario no encontrado.")
 
-        if not pwd_ctx.verify(password_actual, usuario.password_hash):
+        if not self._password_hasher.verify(password_actual, usuario.password_hash):
             raise PasswordActualInvalidaError("La contraseña actual es incorrecta.")
 
-        usuario.password_hash = pwd_ctx.hash(password_nueva)
+        usuario.password_hash = self._password_hasher.hash(password_nueva)
         usuario.updated_at = datetime.now(timezone.utc)
         await self._usuario_repo.save(usuario)
         await self._cache.invalidar_todos_refresh_tokens(user_id)
