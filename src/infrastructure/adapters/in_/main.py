@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -6,7 +5,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from scalar_fastapi import get_scalar_api_reference
-from sqlalchemy import text
 
 from src.infrastructure.adapters.in_.admin_router import router as admin_router
 from src.infrastructure.adapters.in_.auth_router import router as auth_router
@@ -15,122 +13,15 @@ from src.infrastructure.adapters.in_.notifications_router import router as notif
 from src.infrastructure.adapters.in_.users_router import router as users_router
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import engine
-from src.infrastructure.db.models.audit_log_model import AuditLogModel  # noqa: F401
-from src.infrastructure.db.models.notification_model import NotificationModel  # noqa: F401
-from src.infrastructure.db.models.role_model import PermissionModel, RoleModel  # noqa: F401
-from src.infrastructure.db.models.user_model import Base, UserModel  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
-async def _migrate_columns() -> None:
-    """Agrega columnas nuevas a tablas existentes sin romper datos previos."""
-    migrations = [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS nombre VARCHAR(100)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS apellido VARCHAR(100)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS moodle_user_id INTEGER",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color VARCHAR(20)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_logros BOOLEAN NOT NULL DEFAULT TRUE",
-    ]
-    async with engine.begin() as conn:
-        for stmt in migrations:
-            await conn.execute(text(stmt))
-
-
-async def _seed_roles() -> None:
-    """Inserta los roles base si no existen. Idempotente."""
-    from uuid import uuid4
-
-    roles = [
-        ("estudiante", "Estudiante de la plataforma"),
-        ("docente", "Docente de la plataforma"),
-        ("administrador", "Administrador del sistema"),
-    ]
-    async with engine.begin() as conn:
-        for nombre, descripcion in roles:
-            existing = await conn.execute(
-                text("SELECT id FROM roles WHERE nombre = :nombre"),
-                {"nombre": nombre},
-            )
-            if not existing.fetchone():
-                await conn.execute(
-                    text("INSERT INTO roles(id, nombre, descripcion) VALUES(:id, :nombre, :descripcion)"),
-                    {"id": uuid4(), "nombre": nombre, "descripcion": descripcion},
-                )
-                logger.info("Roles seed: rol '%s' creado.", nombre)
-
-
-async def _seed_admin() -> None:
-    """Crea el usuario administrador inicial si no existe. Idempotente."""
-    from uuid import uuid4
-
-    from passlib.context import CryptContext
-    from sqlalchemy import text
-
-    from src.infrastructure.config.settings import settings
-
-    correo = getattr(settings, "admin_seed_email", "admin@sward.upc.edu.pe")
-    password = getattr(settings, "admin_seed_password", None)
-    if not password:
-        logger.info("Admin seed: ADMIN_SEED_PASSWORD no configurado, omitiendo.")
-        return
-
-    pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    pw_hash = pwd_ctx.hash(password)
-
-    async with engine.begin() as conn:
-        existing = await conn.execute(
-            text("SELECT id FROM users WHERE correo_institucional = :correo"),
-            {"correo": correo},
-        )
-        row = existing.fetchone()
-        if row:
-            uid = row[0]
-            logger.info("Admin seed: usuario %s ya existe, verificando rol.", correo)
-        else:
-            uid = uuid4()
-            await conn.execute(
-                text(
-                    "INSERT INTO users"
-                    "(id, correo_institucional, password_hash, estado,"
-                    " nombre, apellido, created_at, updated_at)"
-                    " VALUES(:id, :correo, :pw, 'activo', 'Admin', 'SWARD', NOW(), NOW())"
-                ),
-                {"id": uid, "correo": correo, "pw": pw_hash},
-            )
-
-        rol = await conn.execute(text("SELECT id FROM roles WHERE nombre = 'administrador'"))
-        rol_row = rol.fetchone()
-        if rol_row:
-            await conn.execute(
-                text("INSERT INTO user_roles(user_id, role_id) VALUES(:uid, :rid) ON CONFLICT DO NOTHING"),
-                {"uid": uid, "rid": rol_row[0]},
-            )
-            logger.info("Admin seed: usuario %s creado con rol administrador.", correo)
-        else:
-            logger.warning("Admin seed: tabla roles vacía, no se asignó rol administrador.")
-
-
-async def _init_db() -> None:
-    for intento in range(10):
-        try:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            await _migrate_columns()
-            await _seed_roles()
-            await _seed_admin()
-            logger.info("Base de datos lista.")
-            return
-        except Exception as exc:
-            logger.warning("BD no disponible (intento %d/10): %s", intento + 1, exc)
-            await asyncio.sleep(5)
-    logger.error("No se pudo conectar a la BD tras 10 intentos.")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(_init_db())
+    # El esquema y los datos base (roles y admin) los gestiona Alembic
+    # (`alembic upgrade head` en el entrypoint del contenedor); aquí solo
+    # liberamos el engine al apagar.
     yield
     await engine.dispose()
 

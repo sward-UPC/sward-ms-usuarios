@@ -4,8 +4,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.ports.out_.rol_repository_port import RolRepositoryPort
 from src.domain.entities.rol import Permiso, Rol, TipoRol
-from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
 from src.infrastructure.db.models.role_model import RoleModel, user_roles
 
 

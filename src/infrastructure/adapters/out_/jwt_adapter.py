@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import jwt
 from jwt import PyJWTError
 
-from src.domain.ports.out_.token_port import TokenPair, TokenPort
+from src.application.ports.out_.token_port import TokenPair, TokenPort
 from src.infrastructure.config.settings import settings
 
 
