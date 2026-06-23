@@ -1,6 +1,6 @@
 from passlib.context import CryptContext
 
-from src.domain.ports.out_.password_hasher_port import PasswordHasherPort
+from src.application.ports.out_.password_hasher_port import PasswordHasherPort
 
 # Contexto de hashing compartido por todos los casos de uso (argon2 + bcrypt).
 _pwd_ctx = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")

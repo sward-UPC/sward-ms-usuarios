@@ -3,12 +3,12 @@ from functools import lru_cache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.ports.out_.lms_client_port import LmsClientPort
+from src.application.ports.out_.password_hasher_port import PasswordHasherPort
 from src.application.use_cases.autenticar_usuario import AutenticacionConfig, AutenticarUsuarioUseCase
 from src.application.use_cases.gestionar_notificaciones import GestionarNotificacionesUseCase
 from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
-from src.domain.ports.out_.lms_client_port import LmsClientPort
-from src.domain.ports.out_.password_hasher_port import PasswordHasherPort
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.lms_client_adapter import LmsClientAdapter

@@ -2,14 +2,14 @@ from dataclasses import dataclass
 
 from sward_shared.identidad import id_sward_desde_moodle
 
+from src.application.ports.out_.event_publisher_port import EventPublisherPort
+from src.application.ports.out_.lms_client_port import LmsClientPort
+from src.application.ports.out_.password_hasher_port import PasswordHasherPort
+from src.application.ports.out_.rol_repository_port import RolRepositoryPort
+from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.events.usuario_registrado_event import UsuarioRegistradoEvent
-from src.domain.ports.out_.event_publisher_port import EventPublisherPort
-from src.domain.ports.out_.lms_client_port import LmsClientPort
-from src.domain.ports.out_.password_hasher_port import PasswordHasherPort
-from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
-from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 
 
