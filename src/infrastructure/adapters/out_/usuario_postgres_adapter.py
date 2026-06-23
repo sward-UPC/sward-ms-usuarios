@@ -3,8 +3,8 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.entities.usuario import Usuario
-from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 from src.infrastructure.db.models.user_model import UserModel
 

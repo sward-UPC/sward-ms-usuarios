@@ -1,69 +1,40 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
 
 from src.application.use_cases.gestionar_usuarios import (
     GestionarUsuariosUseCase,
     UsuarioNoEncontradoError,
 )
 from src.infrastructure.adapters.in_.middleware import get_current_user
+from src.infrastructure.adapters.in_.schemas import (
+    ActualizarPerfilRequest,
+    DeleteCuentaResponse,
+    PerfilResponse,
+    PreferenciasRequest,
+)
 from src.infrastructure.dependencies import get_gestionar_usuarios_uc
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
 
-def _user_response(u, current_user: dict) -> dict:
-    return {
-        "id": str(u.id),
-        "correo": u.correo_institucional,
-        "estado": u.estado if isinstance(u.estado, str) else u.estado.value,
-        "nombre": u.nombre,
-        "apellido": u.apellido,
-        "moodle_user_id": u.moodle_user_id,
-        "avatar_color": u.avatar_color,
-        "avatar_url": u.avatar_url,
-        "notif_logros": getattr(u, "notif_logros", True),
-        "rol": current_user.get("rol"),
-        "permisos": current_user.get("permisos", []),
-    }
-
-
-class PreferenciasRequest(BaseModel):
-    """Preferencias de notificación del usuario."""
-
-    model_config = ConfigDict(extra="forbid")
-    notif_logros: bool = Field(description="Recibir notificaciones de logros (racha/recursos)")
-
-
-class ActualizarPerfilRequest(BaseModel):
-    """Campos personalizables del perfil. Nombre, correo, institución y rol
-    provienen de Moodle y son de solo lectura: no se aceptan aquí."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "example": {
-                "avatar_color": "#6366f1",
-                "avatar_url": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
-            }
-        },
-    )
-
-    avatar_color: str | None = Field(
-        default=None,
-        description="Color del avatar en formato hex (ej. #6366f1)",
-        max_length=20,
-        example="#6366f1",
-    )
-    avatar_url: str | None = Field(
-        default=None,
-        description="Imagen de perfil como data URL base64 (JPEG comprimido)",
-        example="data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+def _user_response(u, current_user: dict) -> PerfilResponse:
+    return PerfilResponse(
+        id=str(u.id),
+        correo=u.correo_institucional,
+        estado=u.estado if isinstance(u.estado, str) else u.estado.value,
+        nombre=u.nombre,
+        apellido=u.apellido,
+        moodle_user_id=u.moodle_user_id,
+        avatar_color=u.avatar_color,
+        avatar_url=u.avatar_url,
+        notif_logros=getattr(u, "notif_logros", True),
+        rol=current_user.get("rol"),
+        permisos=current_user.get("permisos", []),
     )
 
 
-@router.get("/me", summary="Perfil del usuario autenticado")
+@router.get("/me", response_model=PerfilResponse, summary="Perfil del usuario autenticado")
 async def get_me(
     current_user: dict = Depends(get_current_user),
     uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
@@ -85,7 +56,7 @@ async def get_me(
 _MAX_AVATAR_URL_LEN = 1_600_000
 
 
-@router.put("/me", summary="Actualiza el perfil del usuario autenticado")
+@router.put("/me", response_model=PerfilResponse, summary="Actualiza el perfil del usuario autenticado")
 async def update_me(
     body: ActualizarPerfilRequest = Body(...),
     current_user: dict = Depends(get_current_user),
@@ -113,7 +84,7 @@ async def update_me(
     return _user_response(u, current_user)
 
 
-@router.put("/me/preferences", summary="Actualiza preferencias de notificación")
+@router.put("/me/preferences", response_model=PerfilResponse, summary="Actualiza preferencias de notificación")
 async def update_preferences(
     body: PreferenciasRequest = Body(...),
     current_user: dict = Depends(get_current_user),
@@ -130,7 +101,7 @@ async def update_preferences(
     return _user_response(u, current_user)
 
 
-@router.delete("/me", summary="Elimina la cuenta del usuario autenticado")
+@router.delete("/me", response_model=DeleteCuentaResponse, summary="Elimina la cuenta del usuario autenticado")
 async def delete_me(
     current_user: dict = Depends(get_current_user),
     uc: GestionarUsuariosUseCase = Depends(get_gestionar_usuarios_uc),
@@ -143,10 +114,10 @@ async def delete_me(
         await uc.eliminar_cuenta(UUID(current_user["sub"]))
     except UsuarioNoEncontradoError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    return {"ok": True}
+    return DeleteCuentaResponse(ok=True)
 
 
-@router.get("/{user_id}", summary="Perfil de un usuario por UUID")
+@router.get("/{user_id}", response_model=PerfilResponse, summary="Perfil de un usuario por UUID")
 async def get_user(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),

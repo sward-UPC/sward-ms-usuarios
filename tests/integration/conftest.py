@@ -14,14 +14,14 @@ from uuid import UUID
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from src.application.ports.out_.cache_port import CachePort
+from src.application.ports.out_.lms_client_port import LmsClientPort
+from src.application.ports.out_.rol_repository_port import RolRepositoryPort
+from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.application.use_cases.autenticar_usuario import AutenticacionConfig, AutenticarUsuarioUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
 from src.domain.entities.rol import Permiso, Rol, TipoRol
 from src.domain.entities.usuario import Usuario
-from src.domain.ports.out_.cache_port import CachePort
-from src.domain.ports.out_.lms_client_port import LmsClientPort
-from src.domain.ports.out_.rol_repository_port import RolRepositoryPort
-from src.domain.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.infrastructure.adapters.in_.main import app
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher

@@ -2,7 +2,7 @@ import logging
 
 import httpx
 
-from src.domain.ports.out_.lms_client_port import LmsClientPort
+from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)

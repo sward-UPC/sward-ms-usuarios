@@ -2,13 +2,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.use_cases.registrar_usuario import (
     CorreoNoEnMoodleError,
     CorreoYaRegistradoError,
     RegistrarUsuarioCommand,
     RegistrarUsuarioUseCase,
 )
-from src.domain.ports.out_.lms_client_port import LmsClientPort
 from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
 
 _HASHER = PasslibPasswordHasher()

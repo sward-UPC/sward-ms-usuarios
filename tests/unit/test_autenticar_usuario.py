@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.ports.out_.token_port import TokenPair
 from src.application.use_cases.autenticar_usuario import (
     AutenticacionConfig,
     AutenticacionError,
@@ -11,7 +12,6 @@ from src.application.use_cases.autenticar_usuario import (
 )
 from src.domain.entities.rol import Rol, TipoRol
 from src.domain.entities.usuario import Usuario
-from src.domain.ports.out_.token_port import TokenPair
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
 
