@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -21,6 +21,12 @@ class UserModel(Base):
     moodle_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avatar_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    notif_logros: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # server_default ademas del default de Python: el seed del admin en la
+    # migracion baseline inserta con SQL crudo, que no pasa por el ORM y por
+    # tanto no aplica `default=True`. Sin el default a nivel de base, una BD
+    # vacia falla con NotNullViolationError y el servicio no arranca nunca.
+    notif_logros: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
