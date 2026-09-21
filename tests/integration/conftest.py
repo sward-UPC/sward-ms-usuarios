@@ -15,10 +15,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from src.application.ports.out_.cache_port import CachePort
+from src.application.ports.out_.codigo_recuperacion_port import CodigoGuardado, CodigoRecuperacionPort
+from src.application.ports.out_.email_port import EmailPort
 from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.ports.out_.rol_repository_port import RolRepositoryPort
 from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.application.use_cases.autenticar_usuario import AutenticacionConfig, AutenticarUsuarioUseCase
+from src.application.use_cases.recuperar_contrasena import RecuperacionConfig, RecuperarContrasenaUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
 from src.domain.entities.rol import Permiso, Rol, TipoRol
 from src.domain.entities.usuario import Usuario
@@ -28,6 +31,7 @@ from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import Pas
 from src.infrastructure.dependencies import (
     get_autenticar_usuario_uc,
     get_jwt_adapter,
+    get_recuperar_contrasena_uc,
     get_redis_adapter,
     get_registrar_usuario_uc,
 )
@@ -142,6 +146,62 @@ class FakeRedisCache(CachePort):
         for k in [k for k in self._store if k.startswith(f"refresh:{usuario_id}:")]:
             self._store.pop(k, None)
 
+    async def marcar_bloqueo_por_intentos(self, usuario_id: UUID) -> None:
+        self._store[f"bloqueo_intentos:{usuario_id}"] = "1"
+
+    async def fue_bloqueado_por_intentos(self, usuario_id: UUID) -> bool:
+        return f"bloqueo_intentos:{usuario_id}" in self._store
+
+    async def limpiar_bloqueo_por_intentos(self, usuario_id: UUID) -> None:
+        self._store.pop(f"bloqueo_intentos:{usuario_id}", None)
+
+
+class FakeCodigos(CodigoRecuperacionPort):
+    """Almacén de códigos en memoria, sin vencimientos reales."""
+
+    def __init__(self):
+        self._huellas: dict[UUID, str] = {}
+        self._intentos: dict[UUID, int] = {}
+        self._espera: set[UUID] = set()
+        self._envios: dict[UUID, int] = {}
+
+    async def guardar(self, usuario_id, huella, ttl_segundos):
+        self._huellas[usuario_id] = huella
+        self._intentos.pop(usuario_id, None)
+
+    async def obtener(self, usuario_id):
+        if usuario_id not in self._huellas:
+            return None
+        return CodigoGuardado(self._huellas[usuario_id], self._intentos.get(usuario_id, 0))
+
+    async def registrar_intento_fallido(self, usuario_id):
+        self._intentos[usuario_id] = self._intentos.get(usuario_id, 0) + 1
+        return self._intentos[usuario_id]
+
+    async def eliminar(self, usuario_id):
+        self._huellas.pop(usuario_id, None)
+        self._intentos.pop(usuario_id, None)
+
+    async def en_espera(self, usuario_id):
+        return usuario_id in self._espera
+
+    async def iniciar_espera(self, usuario_id, segundos):
+        self._espera.add(usuario_id)
+
+    async def contar_envio(self, usuario_id, ventana_segundos):
+        self._envios[usuario_id] = self._envios.get(usuario_id, 0) + 1
+        return self._envios[usuario_id]
+
+
+class BuzonFalso(EmailPort):
+    """Guarda los correos para que la prueba lea el código enviado."""
+
+    def __init__(self):
+        self.correos: list[dict[str, str]] = []
+
+    async def enviar(self, destinatario, asunto, cuerpo):
+        self.correos.append({"para": destinatario, "asunto": asunto, "cuerpo": cuerpo})
+
 
 class _StubEventPublisher:
     def publish(self, event) -> None:  # noqa: ARG002
@@ -196,6 +256,26 @@ async def client():
             ),
         )
 
+    codigos = FakeCodigos()
+    buzon = BuzonFalso()
+
+    def _recuperar_uc():
+        return RecuperarContrasenaUseCase(
+            usuario_repo=usuario_repo,
+            codigos=codigos,
+            cache=cache,
+            email=buzon,
+            password_hasher=hasher,
+            config=RecuperacionConfig(
+                codigo_ttl=900,
+                max_intentos=5,
+                espera_reenvio=60,
+                max_envios_por_hora=5,
+                secreto="clave-de-integracion-suficientemente-larga",
+            ),
+        )
+
+    app.dependency_overrides[get_recuperar_contrasena_uc] = _recuperar_uc
     app.dependency_overrides[get_registrar_usuario_uc] = _registrar_uc
     app.dependency_overrides[get_autenticar_usuario_uc] = _autenticar_uc
     app.dependency_overrides[get_redis_adapter] = lambda: cache
@@ -203,6 +283,7 @@ async def client():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        ac.buzon = buzon  # las pruebas de recuperación leen de aquí el código enviado
         yield ac
 
     app.dependency_overrides.clear()
