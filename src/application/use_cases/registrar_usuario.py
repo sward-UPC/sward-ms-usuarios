@@ -11,6 +11,7 @@ from src.domain.entities.rol import TipoRol
 from src.domain.entities.usuario import Usuario
 from src.domain.events.usuario_registrado_event import UsuarioRegistradoEvent
 from src.domain.value_objects.estado_usuario import EstadoUsuario
+from src.domain.value_objects.politica_contrasena import validar_contrasena
 
 
 @dataclass
@@ -29,18 +30,6 @@ class CorreoInvalidoError(Exception):
 
 class CorreoNoEnMoodleError(Exception):
     pass
-
-
-def _validar_password(password: str) -> None:
-    errores = []
-    if len(password) < 8:
-        errores.append("mínimo 8 caracteres")
-    if not any(c.isupper() for c in password):
-        errores.append("al menos una mayúscula")
-    if not any(c.isdigit() for c in password):
-        errores.append("al menos un número")
-    if errores:
-        raise ValueError(f"Contraseña insegura: {', '.join(errores)}")
 
 
 class RegistrarUsuarioUseCase:
@@ -87,7 +76,7 @@ class RegistrarUsuarioUseCase:
         if await self._usuario_repo.exists_by_correo(correo):
             raise CorreoYaRegistradoError("El correo ya se encuentra registrado. Intenta iniciar sesión.")
 
-        _validar_password(command.password)
+        validar_contrasena(command.password)
 
         usuario.password_hash = self._password_hasher.hash(command.password)
         usuario.estado = EstadoUsuario.ACTIVO
