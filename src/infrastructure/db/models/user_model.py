@@ -25,8 +25,6 @@ class UserModel(Base):
     # migracion baseline inserta con SQL crudo, que no pasa por el ORM y por
     # tanto no aplica `default=True`. Sin el default a nivel de base, una BD
     # vacia falla con NotNullViolationError y el servicio no arranca nunca.
-    notif_logros: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default=text("true")
-    )
+    notif_logros: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
