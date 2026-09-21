@@ -61,7 +61,7 @@ def get_email() -> EmailPort:
             port=settings.smtp_port,
             usuario=settings.smtp_user,
             contrasena=settings.smtp_password,
-            remitente=settings.email_remitente,
+            remitente=settings.remitente_efectivo,
             starttls=settings.smtp_starttls,
             usar_ssl=settings.smtp_ssl,
         )

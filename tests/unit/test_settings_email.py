@@ -32,3 +32,14 @@ def test_produccion_con_smtp():
 def test_valor_desconocido():
     with pytest.raises(ValueError, match="EMAIL_BACKEND"):
         Settings(environment="development", email_backend="sendgrid")
+
+
+def test_remitente_vacio_usa_la_cuenta_smtp():
+    """En AWS el remitente llega de un secreto que puede venir vacío."""
+    s = Settings(environment="development", email_remitente="", smtp_user="sward.proyecto@gmail.com")
+    assert s.remitente_efectivo == "SWARD <sward.proyecto@gmail.com>"
+
+
+def test_remitente_explicito_se_respeta():
+    s = Settings(environment="development", email_remitente="Proyecto <x@y.com>", smtp_user="otra@y.com")
+    assert s.remitente_efectivo == "Proyecto <x@y.com>"

@@ -78,6 +78,19 @@ class Settings(BaseSettings):
     admin_seed_password: str = ""
 
     @property
+    def remitente_efectivo(self) -> str:
+        """Remitente de los correos, con la cuenta SMTP como respaldo.
+
+        En AWS el remitente llega desde un secreto que puede estar vacío; un From
+        en blanco hace que el correo se rechace o caiga en spam.
+        """
+        if self.email_remitente.strip():
+            return self.email_remitente
+        if self.smtp_user.strip():
+            return f"SWARD <{self.smtp_user.strip()}>"
+        return "SWARD <no-responder@sward.local>"
+
+    @property
     def is_development(self) -> bool:
         return self.environment == "development"
 
