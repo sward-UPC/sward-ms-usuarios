@@ -177,3 +177,47 @@ class ChangePasswordRequest(BaseModel):
         max_length=128,
         example="NewSecurePassword456!",
     )
+
+
+class PasswordRecoveryRequest(BaseModel):
+    """Paso 1: pedir un código de recuperación."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"example": {"correo": "estudiante@sward.test"}})
+
+    correo: EmailStr = Field(..., description="Correo con el que se registró la cuenta")
+
+
+class PasswordRecoveryVerifyRequest(BaseModel):
+    """Paso 2: comprobar el código antes de elegir la contraseña nueva."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"example": {"correo": "estudiante@sward.test", "codigo": "048213"}},
+    )
+
+    correo: EmailStr = Field(..., description="Correo al que se envió el código")
+    codigo: str = Field(..., description="Código de 6 dígitos", pattern=r"^\s*\d{6}\s*$")
+
+
+class PasswordResetRequest(BaseModel):
+    """Paso 3: fijar la contraseña nueva con el código recibido."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "correo": "estudiante@sward.test",
+                "codigo": "048213",
+                "password_nueva": "NuevaClave2026",
+            }
+        },
+    )
+
+    correo: EmailStr = Field(..., description="Correo al que se envió el código")
+    codigo: str = Field(..., description="Código de 6 dígitos", pattern=r"^\s*\d{6}\s*$")
+    password_nueva: str = Field(
+        ...,
+        description="Contraseña nueva (mín. 8 caracteres, 1 mayúscula, 1 número)",
+        min_length=8,
+        max_length=128,
+    )

@@ -64,3 +64,12 @@ async def test_cuenta_bloqueada_por_intentos(use_case):
     use_case._cache.get_intentos_login.return_value = 5
     with pytest.raises(CuentaBloqueadaError):
         await use_case.execute(AutenticarUsuarioCommand(correo="test@upc.edu.pe", password="Password1"))
+
+
+@pytest.mark.asyncio
+async def test_el_bloqueo_por_intentos_queda_marcado(use_case):
+    """La recuperación de cuenta necesita saber que el bloqueo lo puso el login."""
+    use_case._cache.incrementar_intentos_login.return_value = 5
+    with pytest.raises(AutenticacionError):
+        await use_case.execute(AutenticarUsuarioCommand(correo="test@upc.edu.pe", password="wrong"))
+    use_case._cache.marcar_bloqueo_por_intentos.assert_awaited_once()

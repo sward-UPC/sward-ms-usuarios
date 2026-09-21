@@ -15,6 +15,11 @@ from src.application.use_cases.gestionar_usuarios import (
     PasswordActualInvalidaError,
     UsuarioNoEncontradoError,
 )
+from src.application.use_cases.recuperar_contrasena import (
+    CodigoInvalidoError,
+    RecuperacionNoDisponibleError,
+    RecuperarContrasenaUseCase,
+)
 from src.application.use_cases.registrar_usuario import (
     CorreoInvalidoError,
     CorreoNoEnMoodleError,
@@ -27,6 +32,9 @@ from src.infrastructure.adapters.in_.schemas import (
     AccessTokenResponse,
     ChangePasswordRequest,
     LoginRequest,
+    PasswordRecoveryRequest,
+    PasswordRecoveryVerifyRequest,
+    PasswordResetRequest,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
@@ -39,6 +47,7 @@ from src.infrastructure.dependencies import (
     get_autenticar_usuario_uc,
     get_gestionar_usuarios_uc,
     get_jwt_adapter,
+    get_recuperar_contrasena_uc,
     get_redis_adapter,
     get_registrar_usuario_uc,
 )
@@ -321,3 +330,113 @@ async def change_password(
     exp = current_user.get("exp", 0)
     remaining = max(0, exp - int(datetime.now(timezone.utc).timestamp()))
     await cache.blacklist_token(current_user["jti"], remaining)
+
+
+# ---------------------------------------------------------------------------
+# Recuperación de contraseña. Tres pasos, en el orden de la pantalla.
+# ---------------------------------------------------------------------------
+
+_MENSAJE_SOLICITUD = "Si el correo está registrado, te enviamos un código. Revisa también la carpeta de spam."
+_CODIGO_INVALIDO = "El código es incorrecto o venció. Pide uno nuevo si ya no te quedan intentos."
+
+
+@router.post(
+    "/password-recovery",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        202: {
+            "description": "Solicitud recibida. La respuesta es la misma exista o no la cuenta.",
+            "content": {"application/json": {"example": {"detail": _MENSAJE_SOLICITUD}}},
+        },
+        422: {"description": "Correo con formato inválido"},
+        503: {"description": "El servicio corre sin correo saliente configurado"},
+    },
+)
+async def password_recovery(
+    body: PasswordRecoveryRequest = Body(...),
+    uc: RecuperarContrasenaUseCase = Depends(get_recuperar_contrasena_uc),
+):
+    """Envía al correo un código de 6 dígitos para restablecer la contraseña.
+
+    **Seguridad:** responde siempre lo mismo, para no revelar qué correos tienen
+    cuenta. El código vence en 15 minutos, no puede pedirse otro antes de 60
+    segundos y hay un máximo de 5 envíos por hora.
+
+    **Auth:** Público
+    """
+    try:
+        await uc.solicitar(body.correo)
+    except RecuperacionNoDisponibleError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    return {"detail": _MENSAJE_SOLICITUD}
+
+
+@router.post(
+    "/password-recovery/verify",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Código válido; puede elegirse la contraseña nueva"},
+        400: {
+            "description": "Código incorrecto, vencido o inexistente",
+            "content": {"application/json": {"example": {"detail": _CODIGO_INVALIDO}}},
+        },
+    },
+)
+async def password_recovery_verify(
+    body: PasswordRecoveryVerifyRequest = Body(...),
+    uc: RecuperarContrasenaUseCase = Depends(get_recuperar_contrasena_uc),
+):
+    """Comprueba el código sin consumirlo.
+
+    Permite avisar de un código equivocado antes de que la persona escriba su
+    contraseña nueva. Cada fallo cuenta: tras 5, el código deja de servir.
+
+    **Auth:** Público
+    """
+    try:
+        await uc.verificar(body.correo, body.codigo)
+    except RecuperacionNoDisponibleError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    except CodigoInvalidoError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CODIGO_INVALIDO)
+
+
+@router.post(
+    "/password-reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Contraseña cambiada; todas las sesiones quedan cerradas"},
+        400: {
+            "description": "Código incorrecto, vencido o inexistente",
+            "content": {"application/json": {"example": {"detail": _CODIGO_INVALIDO}}},
+        },
+        422: {
+            "description": "La contraseña no cumple la política",
+            "content": {"application/json": {"example": {"detail": "Contraseña insegura: al menos una mayúscula"}}},
+        },
+    },
+)
+async def password_reset(
+    body: PasswordResetRequest = Body(...),
+    uc: RecuperarContrasenaUseCase = Depends(get_recuperar_contrasena_uc),
+):
+    """Fija la contraseña nueva con el código recibido.
+
+    **Flujo:**
+    1. Revisa que la contraseña cumpla la política (antes que el código, para no
+       gastar un intento por una contraseña débil)
+    2. Comprueba el código
+    3. Guarda la contraseña y cierra todas las sesiones abiertas
+    4. Si la cuenta estaba bloqueada por intentos fallidos de login, la reactiva;
+       un bloqueo puesto por un administrador se mantiene
+
+    **Auth:** Público
+    """
+    try:
+        await uc.restablecer(body.correo, body.codigo, body.password_nueva)
+    except RecuperacionNoDisponibleError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except CodigoInvalidoError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CODIGO_INVALIDO)

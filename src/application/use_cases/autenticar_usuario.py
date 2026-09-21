@@ -72,6 +72,7 @@ class AutenticarUsuarioUseCase:
             if nuevos >= self._config.max_login_attempts and usuario:
                 usuario.bloquear()
                 await self._usuario_repo.save(usuario)
+                await self._cache.marcar_bloqueo_por_intentos(usuario.id)
             raise AutenticacionError("Credenciales inválidas.")
 
         if usuario.estado == EstadoUsuario.BLOQUEADO:
