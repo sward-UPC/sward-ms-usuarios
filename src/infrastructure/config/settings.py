@@ -53,9 +53,42 @@ class Settings(BaseSettings):
     # URL interna de ms-trazabilidad (KPI "Dominio Plataforma" del panel admin).
     trazabilidad_service_url: str = "http://trazabilidad.sward.local:8000"
 
+    # Correo saliente: "smtp", "consola" o vacío. "consola" escribe el correo en
+    # el log en vez de enviarlo y solo se admite en development. Vacío significa
+    # sin configurar: en development equivale a "consola"; en otro entorno la
+    # recuperación de contraseña responde que no está disponible, sin afectar al
+    # resto del servicio.
+    email_backend: str = ""
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    email_remitente: str = "SWARD <no-responder@sward.local>"
+
+    # Recuperación de contraseña por código.
+    recuperacion_codigo_ttl: int = 900
+    recuperacion_max_intentos: int = 5
+    recuperacion_espera_reenvio: int = 60
+    recuperacion_max_envios_hora: int = 5
+
     # Seed de administrador inicial (solo corre si ambas están definidas)
     admin_seed_email: str = "admin@sward.upc.edu.pe"
     admin_seed_password: str = ""
+
+    @property
+    def remitente_efectivo(self) -> str:
+        """Remitente de los correos, con la cuenta SMTP como respaldo.
+
+        En AWS el remitente llega desde un secreto que puede estar vacío; un From
+        en blanco hace que el correo se rechace o caiga en spam.
+        """
+        if self.email_remitente.strip():
+            return self.email_remitente
+        if self.smtp_user.strip():
+            return f"SWARD <{self.smtp_user.strip()}>"
+        return "SWARD <no-responder@sward.local>"
 
     @property
     def is_development(self) -> bool:
@@ -92,6 +125,22 @@ class Settings(BaseSettings):
                 f"caracteres fuera de development (environment={self.environment!r}). "
                 'Genera uno seguro con `python -c "import secrets; '
                 'print(secrets.token_urlsafe(64))"`.'
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validar_email_backend(self) -> "Settings":
+        """Impide que los códigos de recuperación terminen en los logs.
+
+        El backend "consola" escribe cada correo —con su código— en el log. Fuera
+        de development eso es una fuga, así que ahí solo se admite "smtp" o nada.
+        """
+        if self.email_backend not in {"", "smtp", "consola"}:
+            raise ValueError(f'EMAIL_BACKEND debe ser "smtp", "consola" o vacío, no {self.email_backend!r}.')
+        if self.environment != "development" and self.email_backend == "consola":
+            raise ValueError(
+                'EMAIL_BACKEND="consola" solo se permite en development: escribe los códigos '
+                f"de recuperación en el log (environment={self.environment!r}). Configura SMTP."
             )
         return self
 

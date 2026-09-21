@@ -51,6 +51,16 @@ class RedisAdapter(CachePort):
         async for key in self._redis.scan_iter(match=f"refresh:{usuario_id}:*"):
             await self._redis.delete(key)
 
+    async def marcar_bloqueo_por_intentos(self, usuario_id: UUID) -> None:
+        # Sin vencimiento: dura lo mismo que el bloqueo, que tampoco vence solo.
+        await self._redis.set(f"bloqueo_intentos:{usuario_id}", "1")
+
+    async def fue_bloqueado_por_intentos(self, usuario_id: UUID) -> bool:
+        return await self._redis.exists(f"bloqueo_intentos:{usuario_id}") > 0
+
+    async def limpiar_bloqueo_por_intentos(self, usuario_id: UUID) -> None:
+        await self._redis.delete(f"bloqueo_intentos:{usuario_id}")
+
     async def ping(self) -> bool:
         return bool(await self._redis.ping())
 

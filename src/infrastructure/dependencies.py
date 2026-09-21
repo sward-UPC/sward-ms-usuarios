@@ -3,12 +3,15 @@ from functools import lru_cache
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.ports.out_.email_port import EmailPort
 from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.ports.out_.password_hasher_port import PasswordHasherPort
 from src.application.use_cases.autenticar_usuario import AutenticacionConfig, AutenticarUsuarioUseCase
 from src.application.use_cases.gestionar_notificaciones import GestionarNotificacionesUseCase
 from src.application.use_cases.gestionar_usuarios import GestionarUsuariosUseCase
+from src.application.use_cases.recuperar_contrasena import RecuperacionConfig, RecuperarContrasenaUseCase
 from src.application.use_cases.registrar_usuario import RegistrarUsuarioUseCase
+from src.infrastructure.adapters.out_.consola_email_adapter import ConsolaEmailAdapter
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
 from src.infrastructure.adapters.out_.jwt_adapter import JwtAdapter
 from src.infrastructure.adapters.out_.lms_client_adapter import LmsClientAdapter
@@ -16,7 +19,10 @@ from src.infrastructure.adapters.out_.mock_lms_client_adapter import MockLmsClie
 from src.infrastructure.adapters.out_.notificacion_postgres_adapter import NotificacionPostgresAdapter
 from src.infrastructure.adapters.out_.passlib_password_hasher_adapter import PasslibPasswordHasher
 from src.infrastructure.adapters.out_.redis_adapter import RedisAdapter
+from src.infrastructure.adapters.out_.redis_recuperacion_adapter import RedisRecuperacionAdapter
 from src.infrastructure.adapters.out_.rol_postgres_adapter import RolPostgresAdapter
+from src.infrastructure.adapters.out_.sin_correo_adapter import SinCorreoAdapter
+from src.infrastructure.adapters.out_.smtp_email_adapter import SmtpEmailAdapter
 from src.infrastructure.adapters.out_.usuario_postgres_adapter import UsuarioPostgresAdapter
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import get_session
@@ -40,6 +46,28 @@ def get_redis_adapter() -> RedisAdapter:
 @lru_cache(maxsize=1)
 def get_eventbridge_adapter() -> EventBridgeAdapter:
     return EventBridgeAdapter()
+
+
+@lru_cache(maxsize=1)
+def get_recuperacion_store() -> RedisRecuperacionAdapter:
+    return RedisRecuperacionAdapter()
+
+
+@lru_cache(maxsize=1)
+def get_email() -> EmailPort:
+    if settings.email_backend == "smtp":
+        return SmtpEmailAdapter(
+            host=settings.smtp_host,
+            port=settings.smtp_port,
+            usuario=settings.smtp_user,
+            contrasena=settings.smtp_password,
+            remitente=settings.remitente_efectivo,
+            starttls=settings.smtp_starttls,
+            usar_ssl=settings.smtp_ssl,
+        )
+    if settings.email_backend == "consola" or settings.is_development:
+        return ConsolaEmailAdapter()
+    return SinCorreoAdapter()
 
 
 @lru_cache(maxsize=1)
@@ -104,3 +132,26 @@ def get_gestionar_notificaciones_uc(
     session: AsyncSession = Depends(get_session),
 ) -> GestionarNotificacionesUseCase:
     return GestionarNotificacionesUseCase(NotificacionPostgresAdapter(session))
+
+
+def get_recuperar_contrasena_uc(
+    session: AsyncSession = Depends(get_session),
+    codigos: RedisRecuperacionAdapter = Depends(get_recuperacion_store),
+    cache: RedisAdapter = Depends(get_redis_adapter),
+    email: EmailPort = Depends(get_email),
+    hasher: PasswordHasherPort = Depends(get_password_hasher),
+) -> RecuperarContrasenaUseCase:
+    return RecuperarContrasenaUseCase(
+        usuario_repo=UsuarioPostgresAdapter(session),
+        codigos=codigos,
+        cache=cache,
+        email=email,
+        password_hasher=hasher,
+        config=RecuperacionConfig(
+            codigo_ttl=settings.recuperacion_codigo_ttl,
+            max_intentos=settings.recuperacion_max_intentos,
+            espera_reenvio=settings.recuperacion_espera_reenvio,
+            max_envios_por_hora=settings.recuperacion_max_envios_hora,
+            secreto=settings.secret_key,
+        ),
+    )
