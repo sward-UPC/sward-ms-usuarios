@@ -190,21 +190,11 @@ class SecurityPolicyResponse(BaseModel):
     existen. Aquí solo van las que se pueden comprobar en el código.
     """
 
-    sesion_minutos: int = Field(
-        ..., description="Vida del token de acceso, en minutos"
-    )
-    refresco_dias: int = Field(
-        ..., description="Días que la sesión puede renovarse sin volver a entrar"
-    )
-    auditoria: bool = Field(
-        ..., description="Si las acciones quedan registradas en la bitácora"
-    )
-    bloqueo_por_intentos: bool = Field(
-        ..., description="Si la cuenta se bloquea tras varios intentos fallidos"
-    )
-    doble_factor: bool = Field(
-        ..., description="Si hay segundo factor de autenticación (no implementado)"
-    )
+    sesion_minutos: int = Field(..., description="Vida del token de acceso, en minutos")
+    refresco_dias: int = Field(..., description="Días que la sesión puede renovarse sin volver a entrar")
+    auditoria: bool = Field(..., description="Si las acciones quedan registradas en la bitácora")
+    bloqueo_por_intentos: bool = Field(..., description="Si la cuenta se bloquea tras varios intentos fallidos")
+    doble_factor: bool = Field(..., description="Si hay segundo factor de autenticación (no implementado)")
 
 
 class SystemMetricsResponse(BaseModel):
@@ -228,9 +218,7 @@ class ModelConfigResponse(BaseModel):
         description="Artefacto desplegado; None si no se pudo leer su metadata",
     )
     tasa_aprendizaje: float | None = Field(None, description="Learning rate del modelo")
-    umbral_confianza_xai: float | None = Field(
-        default=None, description="Umbral de confianza XAI (0–1) en uso"
-    )
+    umbral_confianza_xai: float | None = Field(default=None, description="Umbral de confianza XAI (0–1) en uso")
     ventana_contexto: int | None = Field(None, description="Longitud de secuencia (seq_len) real")
     dimension_embedding: int | None = Field(None, description="Dimensión del embedding real")
     ultimo_reentrenamiento: str | None = Field(None, description="Timestamp ISO 8601 del último reentrenamiento real")
