@@ -198,9 +198,14 @@ class SystemMetricsResponse(BaseModel):
 class ModelConfigResponse(BaseModel):
     """Parámetros de configuración del modelo SAKT."""
 
-    version: str = Field(..., description="Versión del modelo (ej. SAKT v2.1)")
+    version: str | None = Field(
+        default=None,
+        description="Artefacto desplegado; None si no se pudo leer su metadata",
+    )
     tasa_aprendizaje: float | None = Field(None, description="Learning rate del modelo")
-    umbral_confianza_xai: float = Field(..., description="Umbral de confianza XAI (0–1)")
+    umbral_confianza_xai: float | None = Field(
+        default=None, description="Umbral de confianza XAI (0–1) en uso"
+    )
     ventana_contexto: int | None = Field(None, description="Longitud de secuencia (seq_len) real")
     dimension_embedding: int | None = Field(None, description="Dimensión del embedding real")
     ultimo_reentrenamiento: str | None = Field(None, description="Timestamp ISO 8601 del último reentrenamiento real")

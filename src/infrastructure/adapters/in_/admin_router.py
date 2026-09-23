@@ -474,12 +474,24 @@ async def _check_own_db(session: AsyncSession) -> DatabaseHealthResponse:
         )
 
 
+def _host_interno(servicio: str) -> str:
+    """Nombre del servicio dentro de la red.
+
+    En AWS los servicios se resuelven por Cloud Map («trazabilidad.sward.local»);
+    en el compose local, por el nombre del contenedor. Con el sufijo siempre
+    puesto, el panel local daba por caídos a los cinco servicios que sí estaban
+    corriendo. Un namespace vacío significa «sin sufijo».
+    """
+    ns = settings.internal_namespace
+    return f"{servicio}.{ns}" if ns else servicio
+
+
 async def _check_service_db(client: httpx.AsyncClient, name: str) -> DatabaseHealthResponse:
     """Sondea la salud de otro servicio vía Cloud Map (su /health confirma que
     el servicio y su DB arrancaron; un servicio con DB caída no queda healthy).
     """
     db_name = f"sward_{name.replace('-', '_')}"
-    url = f"http://{name}.{settings.internal_namespace}:{settings.internal_port}/health"
+    url = f"http://{_host_interno(name)}:{settings.internal_port}/health"
     start = time.monotonic()
     try:
         resp = await client.get(url)
@@ -534,9 +546,6 @@ async def get_databases_status(
 # Modelo SAKT
 # ---------------------------------------------------------------------------
 
-_MODEL_VERSION = "SAKT v2.1"
-
-
 @router.get(
     "/model/config",
     response_model=ModelConfigResponse,
@@ -560,7 +569,7 @@ async def get_model_config(
     **Auth:** JWT administrador
     """
     url = (
-        f"http://recomendacion.{settings.internal_namespace}:{settings.internal_port}"
+        f"http://{_host_interno('recomendacion')}:{settings.internal_port}"
         "/recommendations/internal/model-info"
     )
     headers = {"X-Service-Key": settings.service_key}
@@ -571,16 +580,13 @@ async def get_model_config(
             info = resp.json()
     except Exception as exc:  # noqa: BLE001 — el panel debe degradar, no romper
         logger.warning("No se pudo leer la info real del modelo: %s", exc)
-        return ModelConfigResponse(
-            version=_MODEL_VERSION,
-            umbral_confianza_xai=0.75,
-            datos_disponibles=False,
-        )
+        # Sin metadata no se inventa nada: el panel muestra «—».
+        return ModelConfigResponse(datos_disponibles=False)
 
     return ModelConfigResponse(
-        version=_MODEL_VERSION,
+        version=info.get("version"),
         tasa_aprendizaje=info.get("learning_rate"),
-        umbral_confianza_xai=0.75,
+        umbral_confianza_xai=info.get("umbral_confianza_xai"),
         ventana_contexto=info.get("seq_len"),
         dimension_embedding=info.get("emb_size"),
         ultimo_reentrenamiento=info.get("entrenado_en"),
