@@ -182,6 +182,31 @@ class SystemStatusResponse(BaseModel):
     uptime_segundos: float = Field(..., description="Segundos transcurridos desde el inicio del proceso")
 
 
+class SecurityPolicyResponse(BaseModel):
+    """Lo que el sistema hace de verdad en materia de acceso.
+
+    El panel traía una lista escrita a mano —«Autenticación de dos factores
+    (2FA): requerido para todos los administradores», activada— de cosas que no
+    existen. Aquí solo van las que se pueden comprobar en el código.
+    """
+
+    sesion_minutos: int = Field(
+        ..., description="Vida del token de acceso, en minutos"
+    )
+    refresco_dias: int = Field(
+        ..., description="Días que la sesión puede renovarse sin volver a entrar"
+    )
+    auditoria: bool = Field(
+        ..., description="Si las acciones quedan registradas en la bitácora"
+    )
+    bloqueo_por_intentos: bool = Field(
+        ..., description="Si la cuenta se bloquea tras varios intentos fallidos"
+    )
+    doble_factor: bool = Field(
+        ..., description="Si hay segundo factor de autenticación (no implementado)"
+    )
+
+
 class SystemMetricsResponse(BaseModel):
     """Métricas de recursos del proceso y host."""
 

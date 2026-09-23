@@ -27,6 +27,7 @@ from src.infrastructure.adapters.in_.schemas import (
     ModelConfigResponse,
     RetrainResponse,
     ServiceHealthResponse,
+    SecurityPolicyResponse,
     SystemMetricsResponse,
     SystemStatusResponse,
     UpdateStatusRequest,
@@ -540,6 +541,35 @@ async def get_databases_status(
     # Mantiene el orden de _DB_SERVICES (usuarios primero).
     por_nombre = {own.servicio: own, **{r.servicio: r for r in resultados}}
     return [por_nombre[name] for name in _DB_SERVICES]
+
+
+@router.get(
+    "/system/security",
+    response_model=SecurityPolicyResponse,
+    summary="Política de acceso realmente vigente",
+    responses={
+        200: {"description": "Política de sesión, auditoría y bloqueo"},
+        401: {"description": "JWT ausente o inválido"},
+        403: {"description": "El usuario no tiene rol administrador"},
+    },
+)
+async def get_security_policy(
+    _: dict = Depends(require_admin),
+):
+    """Lo que el sistema aplica de verdad, leído de su configuración.
+
+    Sustituye a la lista escrita a mano del panel, que anunciaba doble factor y
+    un cierre de sesión por inactividad que no existen.
+
+    **Auth:** JWT administrador
+    """
+    return SecurityPolicyResponse(
+        sesion_minutos=settings.access_token_expire_minutes,
+        refresco_dias=settings.refresh_token_expire_days,
+        auditoria=True,
+        bloqueo_por_intentos=True,
+        doble_factor=False,
+    )
 
 
 # ---------------------------------------------------------------------------
