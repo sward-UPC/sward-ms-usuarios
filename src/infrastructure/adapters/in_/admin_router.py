@@ -26,8 +26,8 @@ from src.infrastructure.adapters.in_.schemas import (
     MetricsResponse,
     ModelConfigResponse,
     RetrainResponse,
-    ServiceHealthResponse,
     SecurityPolicyResponse,
+    ServiceHealthResponse,
     SystemMetricsResponse,
     SystemStatusResponse,
     UpdateStatusRequest,
@@ -576,6 +576,7 @@ async def get_security_policy(
 # Modelo SAKT
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/model/config",
     response_model=ModelConfigResponse,
@@ -598,10 +599,7 @@ async def get_model_config(
 
     **Auth:** JWT administrador
     """
-    url = (
-        f"http://{_host_interno('recomendacion')}:{settings.internal_port}"
-        "/recommendations/internal/model-info"
-    )
+    url = f"http://{_host_interno('recomendacion')}:{settings.internal_port}/recommendations/internal/model-info"
     headers = {"X-Service-Key": settings.service_key}
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
