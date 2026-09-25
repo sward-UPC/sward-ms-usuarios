@@ -21,6 +21,8 @@ from src.application.use_cases.recuperar_contrasena import (
     RecuperarContrasenaUseCase,
 )
 from src.application.use_cases.registrar_usuario import (
+    ConsentimientoNoAceptadoError,
+    DatosDeAltaIncompletosError,
     CorreoInvalidoError,
     CorreoNoEnMoodleError,
     CorreoYaRegistradoError,
@@ -89,8 +91,19 @@ async def register(
     **SLA:** <300ms | **Auth:** Público | **Campos requeridos:** correo, password
     """
     try:
-        u = await uc.execute(RegistrarUsuarioCommand(correo=body.correo, password=body.password))
+        u = await uc.execute(
+            RegistrarUsuarioCommand(
+                correo=body.correo,
+                password=body.password,
+                nombres=body.nombres,
+                apellidos=body.apellidos,
+                carrera=body.carrera,
+                consentimiento_version=body.consentimiento_version,
+            )
+        )
         return UsuarioRegistradoResponse(id=str(u.id), correo=u.correo_institucional, estado=u.estado)
+    except (ConsentimientoNoAceptadoError, DatosDeAltaIncompletosError) as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except CorreoNoEnMoodleError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except CorreoYaRegistradoError as e:

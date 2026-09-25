@@ -3,7 +3,10 @@ uvicorn[standard]>=0.29.0
 pydantic>=2.7.0
 pydantic-settings>=2.2.0
 pydantic[email]>=2.7.0
-sqlalchemy>=2.0.0
+# El extra [asyncio] arrastra greenlet, que SQLAlchemy necesita para su capa
+# asincrona y que las versiones recientes ya no instalan solas. Sin el, la imagen
+# construida desde el codigo falla al correr las migraciones y no arranca.
+sqlalchemy[asyncio]>=2.0.0
 alembic>=1.13.0
 asyncpg>=0.29.0
 passlib[bcrypt,argon2]>=1.7.4
