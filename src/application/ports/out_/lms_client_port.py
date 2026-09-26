@@ -8,9 +8,7 @@ class LmsClientPort(ABC):
         ...
 
     @abstractmethod
-    async def provisionar_participante(
-        self, correo: str, nombres: str, apellidos: str
-    ) -> dict:
+    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str) -> dict:
         """Da de alta al participante en Moodle y lo matricula en los cursos del estudio.
 
         Se usa cuando alguien se registra en SWARD y todavía no existe en Moodle.

@@ -2,12 +2,20 @@
 
 import pytest
 
+from src.application.use_cases.registrar_usuario import CONSENTIMIENTO_VERSION_VIGENTE
+
 REGISTER = "/auth/register"
 LOGIN = "/auth/login"
 LOGOUT = "/auth/logout"
 HEALTH = "/health"
 
+# Desde el 24 de septiembre el registro exige la versión del consentimiento que
+# la persona leyó y aceptó. Se toma del código en vez de copiarla, para que un
+# cambio de versión no obligue a editar cada prueba; que una versión vieja se
+# rechace lo comprueban las pruebas unitarias del caso de uso.
 USER = {"correo": "alumno@upc.edu.pe", "password": "Password1"}
+# El consentimiento va solo en el alta: el login rechaza campos de más.
+REGISTRO = {**USER, "consentimiento_version": CONSENTIMIENTO_VERSION_VIGENTE}
 
 
 @pytest.mark.asyncio
@@ -19,7 +27,7 @@ async def test_health_ok(client):
 
 @pytest.mark.asyncio
 async def test_registro_crea_usuario(client):
-    resp = await client.post(REGISTER, json=USER)
+    resp = await client.post(REGISTER, json=REGISTRO)
     assert resp.status_code == 201
     body = resp.json()
     assert body["correo"] == USER["correo"]
@@ -34,11 +42,11 @@ async def test_registro_publico_ignora_rol_y_no_escala_a_admin(client):
     impidiendo de raíz la escalada de privilegios. Un registro limpio se
     autentica siempre como `estudiante`.
     """
-    payload = {**USER, "rol": "administrador"}
+    payload = {**REGISTRO, "rol": "administrador"}
     resp = await client.post(REGISTER, json=payload)
     assert resp.status_code == 422
 
-    resp = await client.post(REGISTER, json=USER)
+    resp = await client.post(REGISTER, json=REGISTRO)
     assert resp.status_code == 201
 
     login = await client.post(LOGIN, json=USER)
@@ -54,7 +62,7 @@ async def test_registro_publico_ignora_rol_y_no_escala_a_admin(client):
 
 @pytest.mark.asyncio
 async def test_flujo_registro_y_login_devuelve_token(client):
-    reg = await client.post(REGISTER, json=USER)
+    reg = await client.post(REGISTER, json=REGISTRO)
     assert reg.status_code == 201
 
     resp = await client.post(LOGIN, json=USER)
@@ -68,7 +76,7 @@ async def test_flujo_registro_y_login_devuelve_token(client):
 
 @pytest.mark.asyncio
 async def test_login_password_incorrecta_devuelve_401(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     resp = await client.post(LOGIN, json={"correo": USER["correo"], "password": "ClaveErronea9"})
     assert resp.status_code == 401
 
@@ -82,7 +90,7 @@ async def test_endpoint_protegido_sin_token_es_rechazado(client):
 
 @pytest.mark.asyncio
 async def test_endpoint_protegido_con_token_valido(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     login = await client.post(LOGIN, json=USER)
     token = login.json()["access_token"]
 

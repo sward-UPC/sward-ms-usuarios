@@ -8,6 +8,8 @@ import re
 
 import pytest
 
+from src.application.use_cases.registrar_usuario import CONSENTIMIENTO_VERSION_VIGENTE
+
 REGISTER = "/auth/register"
 LOGIN = "/auth/login"
 RECOVERY = "/auth/password-recovery"
@@ -16,6 +18,8 @@ RESET = "/auth/password-reset"
 
 CORREO = "alumno@upc.edu.pe"
 USER = {"correo": CORREO, "password": "Password1"}
+# El consentimiento va solo en el alta: el login rechaza campos de más.
+REGISTRO = {**USER, "consentimiento_version": CONSENTIMIENTO_VERSION_VIGENTE}
 
 
 def _codigo(client) -> str:
@@ -28,7 +32,7 @@ def _otro(codigo: str) -> str:
 
 @pytest.mark.asyncio
 async def test_olvido_bloqueo_recuperacion_y_vuelta_a_entrar(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
 
     # Cinco intentos fallidos bloquean la cuenta.
     for _ in range(5):
@@ -57,7 +61,7 @@ async def test_olvido_bloqueo_recuperacion_y_vuelta_a_entrar(client):
 
 @pytest.mark.asyncio
 async def test_la_respuesta_no_revela_si_el_correo_existe(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     existe = await client.post(RECOVERY, json={"correo": CORREO})
     no_existe = await client.post(RECOVERY, json={"correo": "nadie@upc.edu.pe"})
     assert existe.status_code == no_existe.status_code == 202
@@ -67,7 +71,7 @@ async def test_la_respuesta_no_revela_si_el_correo_existe(client):
 
 @pytest.mark.asyncio
 async def test_codigo_equivocado(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     await client.post(RECOVERY, json={"correo": CORREO})
     resp = await client.post(VERIFY, json={"correo": CORREO, "codigo": _otro(_codigo(client))})
     assert resp.status_code == 400
@@ -75,7 +79,7 @@ async def test_codigo_equivocado(client):
 
 @pytest.mark.asyncio
 async def test_el_codigo_no_sirve_dos_veces(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     await client.post(RECOVERY, json={"correo": CORREO})
     codigo = _codigo(client)
     primera = await client.post(RESET, json={"correo": CORREO, "codigo": codigo, "password_nueva": "Primera2026"})
@@ -86,7 +90,7 @@ async def test_el_codigo_no_sirve_dos_veces(client):
 
 @pytest.mark.asyncio
 async def test_contrasena_debil(client):
-    await client.post(REGISTER, json=USER)
+    await client.post(REGISTER, json=REGISTRO)
     await client.post(RECOVERY, json={"correo": CORREO})
     resp = await client.post(
         RESET, json={"correo": CORREO, "codigo": _codigo(client), "password_nueva": "sinmayuscula1"}

@@ -22,10 +22,10 @@ from src.application.use_cases.recuperar_contrasena import (
 )
 from src.application.use_cases.registrar_usuario import (
     ConsentimientoNoAceptadoError,
-    DatosDeAltaIncompletosError,
     CorreoInvalidoError,
     CorreoNoEnMoodleError,
     CorreoYaRegistradoError,
+    DatosDeAltaIncompletosError,
     RegistrarUsuarioCommand,
     RegistrarUsuarioUseCase,
 )

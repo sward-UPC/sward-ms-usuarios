@@ -14,7 +14,6 @@ from src.domain.events.usuario_registrado_event import UsuarioRegistradoEvent
 from src.domain.value_objects.estado_usuario import EstadoUsuario
 from src.domain.value_objects.politica_contrasena import validar_contrasena
 
-
 # Versión del texto de consentimiento que el registro exige aceptar. Se guarda
 # junto a la aceptación: si el texto cambia, hay que poder saber cuál aceptó cada
 # participante, y eso es lo que pide la Ley 29733 para acreditar el consentimiento.
@@ -73,9 +72,7 @@ class RegistrarUsuarioUseCase:
         # crea ninguna cuenta ni se toca Moodle, de modo que no queda ningún dato
         # de la persona en ninguna parte.
         if cmd.consentimiento_version != CONSENTIMIENTO_VERSION_VIGENTE:
-            raise ConsentimientoNoAceptadoError(
-                "Debes aceptar el consentimiento informado vigente para registrarte."
-            )
+            raise ConsentimientoNoAceptadoError("Debes aceptar el consentimiento informado vigente para registrarte.")
 
         datos_moodle = await self._lms_client.buscar_usuario_por_correo(correo)
         if datos_moodle is None:
@@ -83,9 +80,7 @@ class RegistrarUsuarioUseCase:
             # externo a partir de un formulario, y el sistema no podía incorporar a
             # nadie por sí mismo. Ahora el registro provisiona.
             if not cmd.nombres.strip() or not cmd.apellidos.strip():
-                raise DatosDeAltaIncompletosError(
-                    "Necesitamos tu nombre y tus apellidos para crear tu cuenta."
-                )
+                raise DatosDeAltaIncompletosError("Necesitamos tu nombre y tus apellidos para crear tu cuenta.")
             datos_moodle = await self._lms_client.provisionar_participante(
                 correo, cmd.nombres.strip(), cmd.apellidos.strip()
             )
