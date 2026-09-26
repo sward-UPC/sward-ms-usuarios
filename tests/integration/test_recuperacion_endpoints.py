@@ -103,3 +103,28 @@ async def test_contrasena_debil(client):
 async def test_el_codigo_debe_tener_seis_digitos(client):
     resp = await client.post(VERIFY, json={"correo": CORREO, "codigo": "12ab"})
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_no_se_puede_restablecer_con_la_misma_contrasena(client):
+    """Recuperar la cuenta y dejar la contraseña como estaba no es recuperarla.
+
+    Quien pide un código porque cree que alguien conoce su contraseña se quedaba
+    igual de expuesto, convencido de haberla cambiado. Se detectó el 26 de
+    septiembre de 2026 probando la aplicación en la nube.
+    """
+    await client.post(REGISTER, json=REGISTRO)
+    await client.post(RECOVERY, json={"correo": CORREO})
+    resp = await client.post(
+        RESET,
+        json={"correo": CORREO, "codigo": _codigo(client), "password_nueva": USER["password"]},
+    )
+    assert resp.status_code == 422
+    assert "distinta" in resp.json()["detail"]
+
+    # Y el código sigue sirviendo: rechazar la repetida no gasta el intento.
+    otra = await client.post(
+        RESET,
+        json={"correo": CORREO, "codigo": _codigo(client), "password_nueva": "Distinta2026"},
+    )
+    assert otra.status_code == 204

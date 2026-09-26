@@ -111,6 +111,13 @@ class GestionarUsuariosUseCase:
         if not self._password_hasher.verify(password_actual, usuario.password_hash):
             raise PasswordActualInvalidaError("La contraseña actual es incorrecta.")
 
+        # Hasta el 26 de septiembre de 2026 se aceptaba la misma contraseña que ya
+        # tenía: el cambio se daba por hecho y no cambiaba nada. Quien lo hace
+        # porque cree que alguien la conoce se quedaba igual de expuesto, creyendo
+        # lo contrario, que es peor que no haberlo intentado.
+        if self._password_hasher.verify(password_nueva, usuario.password_hash):
+            raise ValueError("La contraseña nueva tiene que ser distinta de la actual.")
+
         usuario.password_hash = self._password_hasher.hash(password_nueva)
         usuario.updated_at = datetime.now(timezone.utc)
         await self._usuario_repo.save(usuario)
