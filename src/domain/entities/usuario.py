@@ -18,6 +18,14 @@ class Usuario:
     avatar_color: str | None = None
     avatar_url: str | None = None
     notif_logros: bool = True
+    # Consentimiento informado. Se guarda la versión del texto aceptado, no sólo
+    # un booleano: si el texto cambia hay que poder acreditar cuál aceptó cada
+    # participante, que es lo que exige la Ley 29733.
+    # Carrera declarada al registrarse. Sirve para describir la muestra del
+    # estudio; no cambia permisos ni comportamiento del sistema.
+    carrera: str | None = None
+    consentimiento_version: str | None = None
+    consentimiento_aceptado_en: datetime | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

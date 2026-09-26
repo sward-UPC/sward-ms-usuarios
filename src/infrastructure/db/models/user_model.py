@@ -26,5 +26,13 @@ class UserModel(Base):
     # tanto no aplica `default=True`. Sin el default a nivel de base, una BD
     # vacia falla con NotNullViolationError y el servicio no arranca nunca.
     notif_logros: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # Consentimiento informado: la versión del texto aceptado y cuándo. Nullable
+    # porque las cuentas creadas antes del 24-sep-2026 se dieron de alta con el
+    # formulario externo, donde el consentimiento quedó registrado aparte.
+    carrera: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    consentimiento_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    consentimiento_aceptado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

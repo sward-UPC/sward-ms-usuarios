@@ -6,8 +6,12 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class RegisterRequest(BaseModel):
     """Solicitud para registrar un nuevo usuario.
 
-    El rol, nombre y apellido se obtienen automáticamente de Moodle
-    usando el correo institucional como clave de búsqueda.
+    Si el correo ya existe en Moodle, el rol, el nombre y el apellido se toman de
+    allí. Si no existe, el sistema **crea la cuenta** y matricula a la persona en
+    los cursos del estudio, y por eso pide nombre y apellidos.
+
+    El consentimiento informado es obligatorio: se envía la versión del texto que
+    se mostró y aceptó, no un simple booleano.
     """
 
     model_config = ConfigDict(
@@ -16,8 +20,33 @@ class RegisterRequest(BaseModel):
             "example": {
                 "correo": "estudiante01@sward.edu",
                 "password": "SecurePassword123!",
+                "nombres": "Juan",
+                "apellidos": "Pérez",
+                "carrera": "Ingeniería Industrial",
+                "consentimiento_version": "2026-09-24",
             }
         },
+    )
+
+    nombres: str = Field(
+        default="",
+        description="Nombres. Obligatorio si el correo aún no existe en Moodle.",
+        max_length=100,
+    )
+    apellidos: str = Field(
+        default="",
+        description="Apellidos. Obligatorio si el correo aún no existe en Moodle.",
+        max_length=100,
+    )
+    carrera: str = Field(
+        default="",
+        description="Carrera declarada; sólo describe la muestra del estudio",
+        max_length=100,
+    )
+    consentimiento_version: str | None = Field(
+        default=None,
+        description="Versión del consentimiento informado aceptado, p. ej. «2026-09-24»",
+        max_length=20,
     )
 
     correo: EmailStr = Field(

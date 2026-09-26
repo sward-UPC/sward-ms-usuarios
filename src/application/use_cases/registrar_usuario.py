@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sward_shared.identidad import id_sward_desde_moodle
 
@@ -14,10 +15,20 @@ from src.domain.value_objects.estado_usuario import EstadoUsuario
 from src.domain.value_objects.politica_contrasena import validar_contrasena
 
 
+# Versión del texto de consentimiento que el registro exige aceptar. Se guarda
+# junto a la aceptación: si el texto cambia, hay que poder saber cuál aceptó cada
+# participante, y eso es lo que pide la Ley 29733 para acreditar el consentimiento.
+CONSENTIMIENTO_VERSION_VIGENTE = "2026-09-24"
+
+
 @dataclass
 class RegistrarUsuarioCommand:
     correo: str
     password: str
+    nombres: str = ""
+    apellidos: str = ""
+    carrera: str = ""
+    consentimiento_version: str | None = None
 
 
 class CorreoYaRegistradoError(Exception):
@@ -30,6 +41,14 @@ class CorreoInvalidoError(Exception):
 
 class CorreoNoEnMoodleError(Exception):
     pass
+
+
+class ConsentimientoNoAceptadoError(Exception):
+    """No se registra a nadie sin consentimiento informado vigente."""
+
+
+class DatosDeAltaIncompletosError(Exception):
+    """Falta el nombre o el apellido para dar de alta al participante en Moodle."""
 
 
 class RegistrarUsuarioUseCase:
@@ -47,14 +66,28 @@ class RegistrarUsuarioUseCase:
         self._lms_client = lms_client
         self._password_hasher = password_hasher
 
-    async def execute(self, command: RegistrarUsuarioCommand) -> Usuario:
-        correo = command.correo.lower().strip()
+    async def execute(self, cmd: RegistrarUsuarioCommand) -> Usuario:
+        correo = cmd.correo.lower().strip()
+
+        # El consentimiento se comprueba antes que nada: si no está aceptado no se
+        # crea ninguna cuenta ni se toca Moodle, de modo que no queda ningún dato
+        # de la persona en ninguna parte.
+        if cmd.consentimiento_version != CONSENTIMIENTO_VERSION_VIGENTE:
+            raise ConsentimientoNoAceptadoError(
+                "Debes aceptar el consentimiento informado vigente para registrarte."
+            )
 
         datos_moodle = await self._lms_client.buscar_usuario_por_correo(correo)
         if datos_moodle is None:
-            raise CorreoNoEnMoodleError(
-                "Correo no registrado en la plataforma educativa. "
-                "Usa el correo institucional con el que accedes a Moodle."
+            # Antes esto era un rechazo: las cuentas de Moodle las creaba un script
+            # externo a partir de un formulario, y el sistema no podía incorporar a
+            # nadie por sí mismo. Ahora el registro provisiona.
+            if not cmd.nombres.strip() or not cmd.apellidos.strip():
+                raise DatosDeAltaIncompletosError(
+                    "Necesitamos tu nombre y tus apellidos para crear tu cuenta."
+                )
+            datos_moodle = await self._lms_client.provisionar_participante(
+                correo, cmd.nombres.strip(), cmd.apellidos.strip()
             )
 
         rol_moodle = TipoRol(datos_moodle["rol"])
@@ -70,15 +103,18 @@ class RegistrarUsuarioUseCase:
             nombre=nombre,
             apellido=apellido,
             moodle_user_id=moodle_user_id,
+            carrera=cmd.carrera.strip() or None,
+            consentimiento_version=cmd.consentimiento_version,
+            consentimiento_aceptado_en=datetime.now(timezone.utc),
         )
         if not usuario.validar_correo():
-            raise CorreoInvalidoError(f"Correo inválido: {command.correo}")
+            raise CorreoInvalidoError(f"Correo inválido: {cmd.correo}")
         if await self._usuario_repo.exists_by_correo(correo):
             raise CorreoYaRegistradoError("El correo ya se encuentra registrado. Intenta iniciar sesión.")
 
-        validar_contrasena(command.password)
+        validar_contrasena(cmd.password)
 
-        usuario.password_hash = self._password_hasher.hash(command.password)
+        usuario.password_hash = self._password_hasher.hash(cmd.password)
         usuario.estado = EstadoUsuario.ACTIVO
         guardado = await self._usuario_repo.save(usuario)
 

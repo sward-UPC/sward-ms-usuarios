@@ -42,6 +42,13 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
             m.avatar_color = usuario.avatar_color
             m.avatar_url = usuario.avatar_url
             m.notif_logros = usuario.notif_logros
+            if usuario.carrera is not None:
+                m.carrera = usuario.carrera
+            # El consentimiento sólo se escribe si viene: un guardado posterior
+            # (cambio de avatar, de contraseña) no debe borrar la aceptación.
+            if usuario.consentimiento_version is not None:
+                m.consentimiento_version = usuario.consentimiento_version
+                m.consentimiento_aceptado_en = usuario.consentimiento_aceptado_en
             m.updated_at = usuario.updated_at
         else:
             m = UserModel(
@@ -55,6 +62,9 @@ class UsuarioPostgresAdapter(UsuarioRepositoryPort):
                 avatar_color=usuario.avatar_color,
                 avatar_url=usuario.avatar_url,
                 notif_logros=usuario.notif_logros,
+                carrera=usuario.carrera,
+                consentimiento_version=usuario.consentimiento_version,
+                consentimiento_aceptado_en=usuario.consentimiento_aceptado_en,
                 created_at=usuario.created_at,
                 updated_at=usuario.updated_at,
             )
@@ -87,6 +97,9 @@ def _to_entity(m: UserModel) -> Usuario:
         avatar_color=m.avatar_color,
         avatar_url=m.avatar_url,
         notif_logros=m.notif_logros if m.notif_logros is not None else True,
+        carrera=m.carrera,
+        consentimiento_version=m.consentimiento_version,
+        consentimiento_aceptado_en=m.consentimiento_aceptado_en,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
