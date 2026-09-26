@@ -29,9 +29,7 @@ class MockLmsClientAdapter(LmsClientPort):
     async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
         return _MOCK_USERS.get(correo.lower())
 
-    async def provisionar_participante(
-        self, correo: str, nombres: str, apellidos: str
-    ) -> dict:
+    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str) -> dict:
         # El mock da de alta de verdad sobre su diccionario: así una prueba puede
         # registrar a alguien nuevo y después encontrarlo.
         correo = correo.lower()

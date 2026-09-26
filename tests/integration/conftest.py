@@ -209,13 +209,36 @@ class _StubEventPublisher:
 
 
 class _FakeLmsClient(LmsClientPort):
-    """Simula que el correo SÍ existe en Moodle como estudiante."""
+    """Simula que el correo SÍ existe en Moodle como estudiante.
+
+    `provisionar_participante` se agregó al puerto el 24 de septiembre, cuando el
+    alta dejó de hacerla un script externo y pasó a hacerla el propio registro.
+    Sin implementarlo aquí, el doble queda abstracto y **las quince pruebas de
+    integración ni siquiera llegan a ejecutarse**: fallan al construir el fixture.
+    Eso dejó en rojo la publicación de la imagen y la nube siguió sirviendo el
+    código anterior hasta el 26 de septiembre.
+
+    Guarda a quién provisionó, para que una prueba pueda comprobarlo.
+    """
+
+    def __init__(self) -> None:
+        self.provisionados: list[str] = []
 
     async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
         return {
             "moodle_user_id": 7,
             "nombre": "Alumno",
             "apellido": "Prueba",
+            "correo": correo,
+            "rol": "estudiante",
+        }
+
+    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str) -> dict:
+        self.provisionados.append(correo)
+        return {
+            "moodle_user_id": 900 + len(self.provisionados),
+            "nombre": nombres,
+            "apellido": apellidos,
             "correo": correo,
             "rol": "estudiante",
         }

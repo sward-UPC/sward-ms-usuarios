@@ -35,9 +35,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "users",
-        sa.Column(
-            "consentimiento_aceptado_en", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("consentimiento_aceptado_en", sa.DateTime(timezone=True), nullable=True),
     )
 
 

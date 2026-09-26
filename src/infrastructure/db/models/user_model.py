@@ -31,8 +31,6 @@ class UserModel(Base):
     # formulario externo, donde el consentimiento quedó registrado aparte.
     carrera: Mapped[str | None] = mapped_column(String(100), nullable=True)
     consentimiento_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    consentimiento_aceptado_en: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    consentimiento_aceptado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
