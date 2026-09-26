@@ -142,6 +142,14 @@ class RecuperarContrasenaUseCase:
             raise CodigoInvalidoError()
         await self._comprobar(usuario.id, codigo)
 
+        # La nueva tiene que ser distinta. Hasta el 26 de septiembre de 2026 se
+        # aceptaba la misma de antes: alguien que recupera su cuenta porque cree
+        # que otro la conoce volvía a dejarla como estaba, convencido de haberla
+        # cambiado. Se comprueba después del código para no revelar, a quien no
+        # tiene uno válido, si acertó la contraseña de otra persona.
+        if self._hasher.verify(password_nueva, usuario.password_hash):
+            raise ValueError("La contraseña nueva tiene que ser distinta de la anterior.")
+
         usuario.password_hash = self._hasher.hash(password_nueva)
         if usuario.estado == EstadoUsuario.BLOQUEADO and await self._cache.fue_bloqueado_por_intentos(usuario.id):
             usuario.activar()
