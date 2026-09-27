@@ -44,9 +44,14 @@ class FakeLmsClient(LmsClientPort):
     def __init__(self, respuesta: dict | None):
         self._respuesta = respuesta
         self.provisiones: list[tuple[str, str, str, str]] = []
+        self.cambios: list[tuple[str, str]] = []
 
     async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
         return self._respuesta
+
+    async def cambiar_password(self, correo: str, password: str) -> bool:
+        self.cambios.append((correo, password))
+        return True
 
     async def provisionar_participante(self, correo, nombres, apellidos, password) -> dict:
         # Se guarda también la contraseña para poder comprobar que el registro la

@@ -223,6 +223,7 @@ class _FakeLmsClient(LmsClientPort):
 
     def __init__(self) -> None:
         self.provisionados: list[str] = []
+        self.cambios: list[tuple[str, str]] = []
 
     async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
         return {
@@ -233,7 +234,14 @@ class _FakeLmsClient(LmsClientPort):
             "rol": "estudiante",
         }
 
-    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str) -> dict:
+    async def cambiar_password(self, correo: str, password: str) -> bool:
+        # Se anota para comprobar que el cambio se propaga al aula virtual:
+        # sin eso, «una sola contraseña» vuelve a valer sólo hasta el primero.
+        self.cambios.append((correo, password))
+        return True
+
+    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str, password: str) -> dict:
+        assert password, "el registro debe mandar la contraseña elegida"
         self.provisionados.append(correo)
         return {
             "moodle_user_id": 900 + len(self.provisionados),

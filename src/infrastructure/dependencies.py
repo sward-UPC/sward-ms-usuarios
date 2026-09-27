@@ -121,6 +121,7 @@ def get_registrar_usuario_uc(
 
 def get_gestionar_usuarios_uc(
     session: AsyncSession = Depends(get_session),
+    lms: LmsClientPort = Depends(get_lms_client),
     cache: RedisAdapter = Depends(get_redis_adapter),
     hasher: PasswordHasherPort = Depends(get_password_hasher),
 ) -> GestionarUsuariosUseCase:
@@ -129,6 +130,7 @@ def get_gestionar_usuarios_uc(
         rol_repo=RolPostgresAdapter(session),
         cache=cache,
         password_hasher=hasher,
+        lms_client=lms,
     )
 
 
@@ -140,6 +142,7 @@ def get_gestionar_notificaciones_uc(
 
 def get_recuperar_contrasena_uc(
     session: AsyncSession = Depends(get_session),
+    lms: LmsClientPort = Depends(get_lms_client),
     codigos: RedisRecuperacionAdapter = Depends(get_recuperacion_store),
     cache: RedisAdapter = Depends(get_redis_adapter),
     email: EmailPort = Depends(get_email),
@@ -158,4 +161,5 @@ def get_recuperar_contrasena_uc(
             max_envios_por_hora=settings.recuperacion_max_envios_hora,
             secreto=settings.secret_key,
         ),
+        lms_client=lms,
     )

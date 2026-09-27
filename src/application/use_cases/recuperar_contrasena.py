@@ -26,6 +26,7 @@ from uuid import UUID
 from src.application.ports.out_.cache_port import CachePort
 from src.application.ports.out_.codigo_recuperacion_port import CodigoRecuperacionPort
 from src.application.ports.out_.email_port import EmailPort, EnvioCorreoError
+from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.ports.out_.password_hasher_port import PasswordHasherPort
 from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
 from src.domain.value_objects.estado_usuario import EstadoUsuario
@@ -76,6 +77,7 @@ class RecuperarContrasenaUseCase:
         email: EmailPort,
         password_hasher: PasswordHasherPort,
         config: RecuperacionConfig,
+        lms_client: LmsClientPort | None = None,
     ):
         self._usuario_repo = usuario_repo
         self._codigos = codigos
@@ -83,6 +85,8 @@ class RecuperarContrasenaUseCase:
         self._email = email
         self._hasher = password_hasher
         self._config = config
+        # Para llevar la contraseña nueva también al aula virtual.
+        self._lms_client = lms_client
 
     # ------------------------------------------------------------ paso 1
     async def solicitar(self, correo: str) -> None:
@@ -149,6 +153,11 @@ class RecuperarContrasenaUseCase:
         # tiene uno válido, si acertó la contraseña de otra persona.
         if self._hasher.verify(password_nueva, usuario.password_hash):
             raise ValueError("La contraseña nueva tiene que ser distinta de la anterior.")
+
+        # Primero el aula virtual: si falla allá no se cambia aquí, o la persona
+        # se quedaría con una contraseña distinta en cada sitio.
+        if self._lms_client is not None:
+            await self._lms_client.cambiar_password(usuario.correo_institucional, password_nueva)
 
         usuario.password_hash = self._hasher.hash(password_nueva)
         if usuario.estado == EstadoUsuario.BLOQUEADO and await self._cache.fue_bloqueado_por_intentos(usuario.id):

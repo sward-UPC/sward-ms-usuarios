@@ -44,3 +44,6 @@ class MockLmsClientAdapter(LmsClientPort):
         }
         _MOCK_USERS[correo] = nuevo
         return nuevo
+
+    async def cambiar_password(self, correo: str, password: str) -> bool:
+        return correo.lower() in _MOCK_USERS

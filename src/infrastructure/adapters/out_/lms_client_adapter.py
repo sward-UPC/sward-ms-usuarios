@@ -48,3 +48,23 @@ class LmsClientAdapter(LmsClientPort):
         resp.raise_for_status()
         logger.info("Participante provisionado en Moodle: %s", correo)
         return resp.json()
+
+    async def cambiar_password(self, correo: str, password: str) -> bool:
+        url = f"{settings.lms_service_url}/lms/users/password"
+        headers = {"X-Service-Key": settings.lms_service_key}
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.put(
+                    url,
+                    json={"correo": correo, "password": password},
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                return bool(resp.json().get("cambiada", False))
+        except httpx.HTTPError as e:
+            # RuntimeError porque es lo que los routers traducen a 503. Se
+            # propaga a propósito: si el aula virtual no acepta la contraseña
+            # nueva, tampoco debe cambiarse aquí, o las dos se separan otra vez.
+            raise RuntimeError(
+                "No pudimos actualizar tu contraseña en el aula virtual. Inténtalo de nuevo en unos minutos."
+            ) from e
