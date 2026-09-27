@@ -23,3 +23,15 @@ class LmsClientPort(ABC):
         Retorna el mismo dict que `buscar_usuario_por_correo`.
         """
         ...
+
+    @abstractmethod
+    async def cambiar_password(self, correo: str, password: str) -> bool:
+        """Lleva al aula virtual la contraseña que la persona acaba de fijar aquí.
+
+        Sin esto, «una sola contraseña» valía sólo hasta el primer cambio: el alta
+        la copia una vez y a partir de ahí las dos cuentas se separan en silencio.
+        Se encontró el 27 de septiembre de 2026.
+
+        Devuelve False si esa persona no existe en Moodle, que no es un error.
+        """
+        ...

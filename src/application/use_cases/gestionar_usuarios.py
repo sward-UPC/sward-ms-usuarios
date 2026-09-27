@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from src.application.ports.out_.cache_port import CachePort
+from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.ports.out_.password_hasher_port import PasswordHasherPort
 from src.application.ports.out_.rol_repository_port import RolRepositoryPort
 from src.application.ports.out_.usuario_repository_port import UsuarioRepositoryPort
@@ -42,11 +43,15 @@ class GestionarUsuariosUseCase:
         rol_repo: RolRepositoryPort,
         cache: CachePort,
         password_hasher: PasswordHasherPort,
+        lms_client: LmsClientPort | None = None,
     ):
         self._usuario_repo = usuario_repo
         self._rol_repo = rol_repo
         self._cache = cache
         self._password_hasher = password_hasher
+        # Para llevar el cambio de contraseña también al aula virtual. Opcional
+        # porque hay pruebas y usos que no tocan Moodle.
+        self._lms_client = lms_client
 
     async def listar(self, offset: int = 0, limit: int = 20) -> tuple[list[Usuario], int]:
         return await self._usuario_repo.find_all(offset=offset, limit=limit)
@@ -117,6 +122,13 @@ class GestionarUsuariosUseCase:
         # lo contrario, que es peor que no haberlo intentado.
         if self._password_hasher.verify(password_nueva, usuario.password_hash):
             raise ValueError("La contraseña nueva tiene que ser distinta de la actual.")
+
+        # Primero el aula virtual, después aquí. El orden importa: si falla allá
+        # y ya la hubiéramos cambiado aquí, la persona se quedaría con una
+        # contraseña en cada sitio sin que nada se lo dijera -que es exactamente
+        # el fallo que esto corrige-. Si el aula no responde, no se cambia nada.
+        if self._lms_client is not None:
+            await self._lms_client.cambiar_password(usuario.correo_institucional, password_nueva)
 
         usuario.password_hash = self._password_hasher.hash(password_nueva)
         usuario.updated_at = datetime.now(timezone.utc)
