@@ -24,7 +24,7 @@ class LmsClientAdapter(LmsClientPort):
         resp.raise_for_status()
         return resp.json()
 
-    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str) -> dict:
+    async def provisionar_participante(self, correo: str, nombres: str, apellidos: str, password: str) -> dict:
         url = f"{settings.lms_service_url}/lms/users/provision"
         headers = {"X-Service-Key": settings.lms_service_key}
         try:
@@ -33,7 +33,12 @@ class LmsClientAdapter(LmsClientPort):
             async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.post(
                     url,
-                    json={"correo": correo, "nombres": nombres, "apellidos": apellidos},
+                    json={
+                        "correo": correo,
+                        "nombres": nombres,
+                        "apellidos": apellidos,
+                        "password": password,
+                    },
                     headers=headers,
                 )
         except httpx.RequestError as exc:

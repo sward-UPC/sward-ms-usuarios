@@ -81,8 +81,13 @@ class RegistrarUsuarioUseCase:
             # nadie por sí mismo. Ahora el registro provisiona.
             if not cmd.nombres.strip() or not cmd.apellidos.strip():
                 raise DatosDeAltaIncompletosError("Necesitamos tu nombre y tus apellidos para crear tu cuenta.")
+            # Se le manda la contraseña que acaba de elegir, para que le sirva
+            # también en el aula virtual: antes Moodle le enviaba una temporal por
+            # correo y acababa manejando tres. Va sin hashear porque Moodle tiene
+            # que aplicarle el suyo; viaja entre dos servicios nuestros por HTTPS
+            # y ninguno de los dos la guarda en claro.
             datos_moodle = await self._lms_client.provisionar_participante(
-                correo, cmd.nombres.strip(), cmd.apellidos.strip()
+                correo, cmd.nombres.strip(), cmd.apellidos.strip(), cmd.password
             )
 
         rol_moodle = TipoRol(datos_moodle["rol"])
