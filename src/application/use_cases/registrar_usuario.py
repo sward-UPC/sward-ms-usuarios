@@ -1,8 +1,10 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sward_shared.identidad import id_sward_desde_moodle
 
+from src.application.ports.out_.email_port import EmailPort, EnvioCorreoError
 from src.application.ports.out_.event_publisher_port import EventPublisherPort
 from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.ports.out_.password_hasher_port import PasswordHasherPort
@@ -17,7 +19,32 @@ from src.domain.value_objects.politica_contrasena import validar_contrasena
 # Versión del texto de consentimiento que el registro exige aceptar. Se guarda
 # junto a la aceptación: si el texto cambia, hay que poder saber cuál aceptó cada
 # participante, y eso es lo que pide la Ley 29733 para acreditar el consentimiento.
+logger = logging.getLogger(__name__)
+
 CONSENTIMIENTO_VERSION_VIGENTE = "2026-09-24"
+
+# Correo de bienvenida. Existe por dos razones: confirma que la dirección es real
+# —lo hacía el correo que mandaba Moodle, que desapareció al pasar a una sola
+# contraseña— y repite dónde entrar y con qué, que es justo donde se perdía la
+# gente cuando había tres claves.
+ASUNTO_BIENVENIDA = "Ya estás inscrito en el estudio"
+
+CUERPO_BIENVENIDA = """Hola{saludo}.
+
+Tu inscripción quedó registrada. Ya tienes cuenta en los dos sitios del estudio,
+y entras a los dos con este mismo correo y la contraseña que elegiste. No hay
+ninguna otra clave que recordar.
+{aula}
+Ahí están tus dos cursos —Estadística y Matemática Financiera— con seis temas
+cada uno. Cada tema tiene un resumen, un video, un ejemplo resuelto, una práctica
+y tres cuestionarios cortos. Los cuestionarios son lo que importa: son unos cinco
+minutos cada uno y puedes repartirlos en varios días.
+
+No te estamos evaluando a ti. Evaluamos el sistema, y nada de esto afecta tu nota
+del curso.
+{app}
+¿Algún problema para entrar? Responde a este correo.
+"""
 
 
 @dataclass
@@ -58,12 +85,18 @@ class RegistrarUsuarioUseCase:
         event_publisher: EventPublisherPort,
         lms_client: LmsClientPort,
         password_hasher: PasswordHasherPort,
+        email: EmailPort | None = None,
+        aula_virtual_url: str = "",
+        sward_app_url: str = "",
     ):
         self._usuario_repo = usuario_repo
         self._rol_repo = rol_repo
         self._event_publisher = event_publisher
         self._lms_client = lms_client
         self._password_hasher = password_hasher
+        self._email = email
+        self._aula_virtual_url = aula_virtual_url.rstrip("/")
+        self._sward_app_url = sward_app_url.rstrip("/")
 
     async def execute(self, cmd: RegistrarUsuarioCommand) -> Usuario:
         correo = cmd.correo.lower().strip()
@@ -129,4 +162,33 @@ class RegistrarUsuarioUseCase:
                 rol=str(rol_moodle),
             )
         )
+
+        await self._dar_la_bienvenida(guardado)
         return guardado
+
+    async def _dar_la_bienvenida(self, usuario: Usuario) -> None:
+        """Le escribe a quien acaba de inscribirse.
+
+        **Nunca tumba el registro.** La cuenta ya está creada en los dos sitios
+        cuando esto corre: si el correo no sale, la persona puede entrar igual, y
+        hacerla repetir el trámite por un fallo del servidor de correo sería
+        cambiar un problema menor por uno mayor. Se deja anotado en el log.
+        """
+        if self._email is None or not getattr(self._email, "disponible", True):
+            return
+        saludo = f", {usuario.nombre}" if usuario.nombre else ""
+        # Los enlaces salen del entorno. Sin ellos el correo se envía igual, con
+        # la frase pero sin dirección: es mejor que mandar a nadie a una inventada.
+        aula = "\nEmpieza por el aula virtual"
+        aula += f": {self._aula_virtual_url}\n" if self._aula_virtual_url else ".\n"
+        app = (
+            "\nCuando termines te avisaremos para que uses SWARD, la aplicación que te"
+            "\nrecomienda qué repasar y te explica por qué lo recomienda"
+        )
+        app += f":\n{self._sward_app_url}\n" if self._sward_app_url else ".\n"
+        cuerpo = CUERPO_BIENVENIDA.format(saludo=saludo, aula=aula, app=app)
+        try:
+            await self._email.enviar(usuario.correo_institucional, ASUNTO_BIENVENIDA, cuerpo)
+        except (EnvioCorreoError, OSError) as e:
+            # Se traga a propósito: ver el docstring.
+            logger.warning("No se pudo enviar la bienvenida a %s: %s", usuario.correo_institucional, e)

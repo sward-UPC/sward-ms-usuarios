@@ -105,6 +105,7 @@ def get_registrar_usuario_uc(
     events: EventBridgeAdapter = Depends(get_eventbridge_adapter),
     lms: LmsClientPort = Depends(get_lms_client),
     hasher: PasswordHasherPort = Depends(get_password_hasher),
+    email: EmailPort = Depends(get_email),
 ) -> RegistrarUsuarioUseCase:
     return RegistrarUsuarioUseCase(
         usuario_repo=UsuarioPostgresAdapter(session),
@@ -112,6 +113,9 @@ def get_registrar_usuario_uc(
         event_publisher=events,
         lms_client=lms,
         password_hasher=hasher,
+        email=email,
+        aula_virtual_url=settings.aula_virtual_url,
+        sward_app_url=settings.sward_app_url,
     )
 
 
