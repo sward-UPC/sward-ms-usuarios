@@ -42,13 +42,16 @@ class FakeLmsClient(LmsClientPort):
 
     def __init__(self, respuesta: dict | None):
         self._respuesta = respuesta
-        self.provisiones: list[tuple[str, str, str]] = []
+        self.provisiones: list[tuple[str, str, str, str]] = []
 
     async def buscar_usuario_por_correo(self, correo: str) -> dict | None:
         return self._respuesta
 
-    async def provisionar_participante(self, correo, nombres, apellidos) -> dict:
-        self.provisiones.append((correo, nombres, apellidos))
+    async def provisionar_participante(self, correo, nombres, apellidos, password) -> dict:
+        # Se guarda también la contraseña para poder comprobar que el registro la
+        # manda: sin ella Moodle generaría una temporal y el participante acabaría
+        # con tres contraseñas, que es justo lo que se corrigió el 27 de septiembre.
+        self.provisiones.append((correo, nombres, apellidos, password))
         return {
             "moodle_user_id": 99,
             "nombre": nombres,
@@ -115,7 +118,7 @@ async def test_da_de_alta_en_moodle_a_quien_no_existe():
 
     u = await uc.execute(comando(correo="fantasma@upc.edu.pe", nombres="Ana", apellidos="Torres"))
 
-    assert lms.provisiones == [("fantasma@upc.edu.pe", "Ana", "Torres")]
+    assert lms.provisiones == [("fantasma@upc.edu.pe", "Ana", "Torres", "SecurePass1")]
     assert u.moodle_user_id == 99
     assert u.nombre == "Ana"
 
@@ -182,7 +185,7 @@ async def test_el_registro_nunca_crea_un_docente():
     u = await uc.execute(comando(correo="quiensea@upc.edu.pe"))
 
     # El puerto no recibe rol: no hay forma de pedir un alta de docente desde aquí.
-    assert lms.provisiones == [("quiensea@upc.edu.pe", "Test", "User")]
+    assert lms.provisiones == [("quiensea@upc.edu.pe", "Test", "User", "SecurePass1")]
     assert u.moodle_user_id == 99
 
 

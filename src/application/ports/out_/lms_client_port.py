@@ -15,6 +15,11 @@ class LmsClientPort(ABC):
         Hasta el 24 de septiembre ese caso se rechazaba, porque las cuentas las creaba
         un script externo alimentado por un formulario.
 
+        Se envía **la contraseña que la persona acaba de elegir**, para que le sirva
+        también en el aula virtual. Desde el 27 de septiembre: antes Moodle generaba
+        una temporal y se la mandaba por correo, y el participante acababa con tres
+        contraseñas y dos reglamentos distintos. No se registra en ningún log.
+
         Retorna el mismo dict que `buscar_usuario_por_correo`.
         """
         ...
