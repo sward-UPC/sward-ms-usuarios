@@ -40,6 +40,13 @@ class Settings(BaseSettings):
             keys.add(self.authorized_trazabilidad_key)
         return keys
 
+    # Direcciones públicas que se le dan a la persona en el correo de bienvenida.
+    # Cambian con cada despliegue, así que vienen del entorno; vacías, el correo
+    # se envía igual pero sin enlaces, que es mejor que mandar a nadie a una
+    # dirección inventada.
+    aula_virtual_url: str = ""
+    sward_app_url: str = ""
+
     # Integración interna con ms-integracion-lms
     lms_service_url: str = "http://integracion-lms.sward.local:8000"
     lms_service_key: str = "dev-lms-key"

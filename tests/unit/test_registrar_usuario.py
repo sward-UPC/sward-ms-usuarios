@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.application.ports.out_.email_port import EnvioCorreoError
 from src.application.ports.out_.lms_client_port import LmsClientPort
 from src.application.use_cases.registrar_usuario import (
     CONSENTIMIENTO_VERSION_VIGENTE,
@@ -61,13 +62,37 @@ class FakeLmsClient(LmsClientPort):
         }
 
 
-def _use_case(lms: FakeLmsClient) -> RegistrarUsuarioUseCase:
+class FakeEmail:
+    """Correo de mentira. `falla` simula un servidor de salida caído."""
+
+    disponible = True
+
+    def __init__(self, falla: bool = False):
+        self.enviados: list[tuple[str, str, str]] = []
+        self._falla = falla
+
+    async def enviar(self, destinatario: str, asunto: str, cuerpo: str) -> None:
+        if self._falla:
+            raise EnvioCorreoError("servidor de salida caído")
+        self.enviados.append((destinatario, asunto, cuerpo))
+
+
+def _use_case(lms: FakeLmsClient, email: FakeEmail | None = None) -> RegistrarUsuarioUseCase:
     repo = AsyncMock()
     repo.exists_by_correo.return_value = False
     repo.save.side_effect = lambda u: u
     rol_repo = AsyncMock()
     rol_repo.find_by_nombre.return_value = None
-    return RegistrarUsuarioUseCase(repo, rol_repo, MagicMock(), lms, _HASHER)
+    return RegistrarUsuarioUseCase(
+        repo,
+        rol_repo,
+        MagicMock(),
+        lms,
+        _HASHER,
+        email=email,
+        aula_virtual_url="https://aula.example/",
+        sward_app_url="https://app.example/",
+    )
 
 
 @pytest.fixture
@@ -228,3 +253,51 @@ async def test_la_carrera_queda_guardada(use_case):
 async def test_sin_carrera_queda_en_none(use_case):
     u = await use_case.execute(comando(carrera="   "))
     assert u.carrera is None
+
+
+# ------------------------------------------------------------ correo de bienvenida
+# Existe desde el 27-sep-2026, cuando se pasó a una sola contraseña: el correo que
+# mandaba Moodle desapareció, y con él la confirmación de que la dirección existe
+# y la explicación de dónde entrar.
+
+
+@pytest.mark.asyncio
+async def test_la_bienvenida_dice_donde_entrar_y_con_que():
+    email = FakeEmail()
+    uc = _use_case(FakeLmsClient(MOODLE_ESTUDIANTE), email)
+
+    await uc.execute(comando(correo="ana@upc.edu.pe"))
+
+    assert len(email.enviados) == 1
+    destinatario, asunto, cuerpo = email.enviados[0]
+    assert destinatario == "ana@upc.edu.pe"
+    assert "inscrito" in asunto.lower()
+    # Lo que no puede faltar: la regla de la contraseña única y las dos direcciones.
+    assert "la contraseña que elegiste" in cuerpo
+    assert "https://aula.example" in cuerpo
+    assert "https://app.example" in cuerpo
+    # Y lo que no debe aparecer nunca: la contraseña.
+    assert "SecurePass1" not in cuerpo
+
+
+@pytest.mark.asyncio
+async def test_si_el_correo_falla_el_registro_igual_se_completa():
+    """La cuenta ya existe en los dos sitios cuando se intenta el envío.
+
+    Hacer repetir el trámite por un fallo del servidor de correo cambiaría un
+    problema menor por uno mayor.
+    """
+    email = FakeEmail(falla=True)
+    uc = _use_case(FakeLmsClient(MOODLE_ESTUDIANTE), email)
+
+    usuario = await uc.execute(comando(correo="ana@upc.edu.pe"))
+
+    assert usuario.correo_institucional == "ana@upc.edu.pe"
+    assert email.enviados == []
+
+
+@pytest.mark.asyncio
+async def test_sin_correo_configurado_no_se_intenta_enviar():
+    uc = _use_case(FakeLmsClient(MOODLE_ESTUDIANTE), email=None)
+    usuario = await uc.execute(comando(correo="ana@upc.edu.pe"))
+    assert usuario.correo_institucional == "ana@upc.edu.pe"
